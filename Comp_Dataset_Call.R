@@ -502,3 +502,72 @@ plotCompHist <- function(correlation_truth,correlation2_random,whichMethod){
   return(pObj)
 }
 
+# _____________________________________________________________________________________________________________________________________
+# Function to make bubble plots for pathway enrichment tests
+makeBubble <- function(pathHere, patternHere, sizeHere1,sizeHere2, saveMessage){
+  
+  ### pay attention to the fileList order and resourceLabel order
+  fileList <- list.files(path=pathHere,pattern =  paste0(patternHere,".*.txt"))
+  resourceLabel <- str_extract(fileList, "(?<=\\.).*?(?=\\.)")
+  
+  ### read the data frame from each file.
+  thisC = 1
+  comSFDat=c()
+  pThresh = 0.05
+  for(fileSg in fileList){
+    comSF <- read.csv(paste0(pathHere,fileSg),sep="\t",header=TRUE)[,c("pathway","pval","padj","overlap","size","overlapGenes")] 
+    comSF <- comSF[which(comSF$padj<pThresh),]
+    YNSignificant <- ifelse(comSF$padj<0.05,"Y","N")
+    comSF<- cbind(comSF,YNSignificant)
+    colnames(comSF)[ncol(comSF)] <-"YNSignificant"
+    comSF <- comSF[order(comSF$padj),]
+    
+    addCol <- matrix(rep(resourceLabel[thisC],nrow(comSF)),ncol=1)
+    comSF <-cbind(addCol,comSF)
+    colnames(comSF)[1] <- "resource"
+    
+    comSF <- comSF[which(!is.na(comSF$pval)),] 
+    
+    comSFDat <- rbind(comSFDat,comSF)
+    
+    thisC = thisC+1
+    remove(comSF)
+  }
+  
+  comSFDat %<>% mutate(pathway = tolower(gsub("_", " ", gsub("^[^_]*_", "", pathway))))
+  
+  p.comp <- ggplot(data=comSFDat) + geom_point(aes(x= factor(resource,levels=resourceLabel),y=pathway,size=-log(pval),color = overlap,shape=factor(YNSignificant,levels=c("Y","N")))) + xlab("") + ylab("") + 
+    labs(color="overlap",shape="padj<0.05",size="-log(pval)") + ggtitle(paste0("Enrichment test based on\n",patternHere, " database")) +
+    scale_shape_manual(values=c(19,1),labels=c("Y","N")) +
+    theme(plot.title=element_text(size = 8 ,face="bold",hjust=0.5),
+          axis.text.x = element_text(angle = 20, vjust = 1, hjust=1,size= sizeHere1,face="bold"),axis.text.y = element_text(size = sizeHere2,face="bold"), 
+          panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+          panel.background = element_blank(), axis.line = element_line(colour = "black"))  
+  
+  
+  save(comSFDat,file=paste0(pathHere,saveMessage))
+  
+  print(p.comp)
+  return(p.comp)
+}
+
+# Function to apply Box-Cox transformation
+boxcoxTranform <- function(VariableHere, maxScore) {
+  # Adjust the variable by subtracting from maxScore to make all values positive
+  adjustedVariable <<- maxScore - VariableHere
+  zeroID <- which(adjustedVariable <= 0)
+  
+  # Handle zero values by adding a small positive constant
+  if (length(zeroID) != 0) {
+    adjustedVariable[zeroID] <<- runif(length(zeroID), min = 0.001, max = 0.01) * sort(adjustedVariable)[2]
+  }
+  
+  # Perform Box-Cox transformation
+  b <- boxcox(lm(adjustedVariable ~ 1))
+  
+  # Determine the best lambda
+  lambda <- b$x[which.max(b$y)]
+  new_VariableHere <- (adjustedVariable ^ lambda - 1) / lambda
+  
+  return(new_VariableHere)
+}
