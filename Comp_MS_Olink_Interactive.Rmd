@@ -1,0 +1,703 @@
+---
+title: "Comparisons between Olink and MS Data"
+output:
+  html_document:
+    toc: true
+    toc_float: 
+      collapsed: false
+      smooth_scroll: true
+---
+<!-- Inline CSS for Fire Red Titles -->
+<style>
+h1 {
+color: darkblue; /* set the darkblue color */
+font-size: 25px; /* decrease font size */
+}
+</style>
+
+```{r, Prepare, echo=FALSE, warning=FALSE, message=FALSE, results=F}
+# Load required libraries
+library(optparse)
+library(readxl)
+library(tidyverse)
+library(magrittr)
+library(dplyr)
+library(stringr)
+library(VennDiagram)
+library(LaplacesDemon)
+library(philentropy)
+library(lsa)
+library(ComplexUpset)
+library(igraph)
+library(ggplot2)
+library(ggExtra)
+library(factoextra)
+library(umap)
+library(plotly)
+library(GGally)
+library(cowplot)
+library(htmltools)
+
+option_list <- list(
+  make_option(c("-i", "--inputPath"), type = "character", default = "/home/rstudio/YD/MS/input/",
+              help = "Path to input files.", metavar = "INPUT_PATH"),
+  make_option(c("-o", "--outPath"), type = "character", default = "/home/rstudio/YD/MS/output/Compare/",
+              help = "Path to output files.", metavar = "OUTPUT_PATH"),
+  make_option(c("-m", "--intermediatePath"), type = "character", default = "/home/rstudio/YD/MS/intermediate/Compare/",
+              help = "Path to store intermediate data during processing.", metavar = "MD_PATH"),
+  make_option(c("-d","--DEL_file"), type = "character", default = "/home/rstudio/YD/MS/output/BEADdel/SAMPLE/QCed_Frame.csv", 
+              help = "Protein expression input file name.", metavar = "DEL_file"),
+  make_option(c("-n","--NON_file"), type = "character", default = "/home/rstudio/YD/MS/output/NONdel/SAMPLE/QCed_Frame.csv", 
+              help = "Clinical meta input file name.", metavar = "NON_file"),
+  make_option(c("-f", "--pdfFile"), type = "character", default = "QCed_comp.pdf",
+              help = "Path of codes", metavar = "pdfFile"),
+  make_option(c("-s", "--codePath"), type = "character", default = "/home/rstudio/YD/MS/script/Compare/",
+              help = "Path of codes", metavar = "CODE_PATH")
+)
+
+# Create an OptionParser object
+parser <- OptionParser(option_list = option_list)
+
+# Parse the command-line arguments
+args <- parse_args(parser)
+
+# Assign parsed values to variables
+inputPath <- args$inputPath
+outPath <- args$outPath
+intermediatePath <- args$intermediatePath
+codePath <- args$codePath
+DEL_file <- args$DEL_file
+NON_file <- args$NON_file
+pdfFile <- args$pdfFile
+
+source(paste0(codePath,"Comp_Dataset_Call.R"))
+
+### DEL Protein Naming Scheme Mapping
+DEL_ProMap <- read_excel(paste0(inputPath, "ProteinMapping/BEADdepletions_ProteinMapping.xlsx"))
+NON_ProMap <- read_excel(paste0(inputPath, "ProteinMapping/NONDEPLETED_ProteinMapping.xlsx"))
+# Olink_ProMap <- read_excel(paste0(inputPath, "ProteinMapping/Olink_ProteinMapping.xlsx"))
+
+### Read in two datasets
+DEL_Sample <-  read.table(DEL_file)
+NON_Sample <- read.table(NON_file)
+if(colnames(DEL_Sample)[1] == "PlateID"){
+  DEL_Sample <- DEL_Sample[,-1]
+  NON_Sample <- NON_Sample[,-1]}
+### Using the Entrez Gene Naming scheme
+colnames(DEL_Sample) <- sapply(colnames(DEL_Sample), function(x){DEL_ProMap[which(DEL_ProMap$Protein.Group==x),"Genes"]})
+colnames(NON_Sample) <- sapply(colnames(NON_Sample), function(x){NON_ProMap[which(NON_ProMap$Protein.Group==x),"Genes"]})
+
+### Raw Data
+DEL_Sample_Raw <-  read.table("/home/rstudio/YD/MS/intermediate/BEADdel/SAMPLE/ProDat_RmContam.csv")
+NON_Sample_Raw <- read.table("/home/rstudio/YD/MS/intermediate/NONdel/SAMPLE/ProDat_RmContam.csv")
+colnames(DEL_Sample_Raw) <- sapply(colnames(DEL_Sample_Raw), function(x){DEL_ProMap[which(DEL_ProMap$Protein.Group==x),"Genes"]})
+colnames(NON_Sample_Raw) <- sapply(colnames(NON_Sample_Raw), function(x){NON_ProMap[which(NON_ProMap$Protein.Group==x),"Genes"]})
+
+Olink_Frame <- read.csv("/home/rstudio/YD/input/imcm_team_als_csf_olink_cleaned_2024-08-29.csv", row.names = 1)
+Olink_Frame %<>% select(-one_of(c("PlateID", "median_npx")))
+
+### Check the multiple gene segments within one name
+# colnames(Olink_Frame)[grep("\\.",colnames(Olink_Frame))]
+# colnames(Olink_Frame)[grep("_",colnames(Olink_Frame))]
+# colnames(DEL_Sample_Raw)[grep("\\.",colnames(DEL_Sample_Raw))]
+# colnames(NON_Sample_Raw)[grep("\\.",colnames(NON_Sample_Raw))]
+
+### Manually change some protein mapping of Olink
+colnames(Olink_Frame)[which(colnames(Olink_Frame) == "HLA.A")] = "HLA-A"
+colnames(Olink_Frame)[which(colnames(Olink_Frame) == "HLA.E")] = "HLA-E"
+colnames(Olink_Frame)[which(colnames(Olink_Frame) == "HLA.DRA")] = "HLA-DRA"
+colnames(Olink_Frame) <- gsub("_", ".", colnames(Olink_Frame))
+
+### Manually change some SampleID of Olink, C9 to C9C, BM1 to BX1
+rownames(Olink_Frame) <- sub("BM1_", "BX1_", rownames(Olink_Frame))
+rownames(Olink_Frame) <- sub("C9_", "C9C_", rownames(Olink_Frame))
+
+```
+
+```{r, read in Color data from Olink and Community results, echo=FALSE, warning=FALSE, message=FALSE}
+### Read in Community derived data, three groups of protein names
+# clusterObj <- readRDS("/home/rstudio/YD/intermediate/ALS/ModuleDetection_0.25/CORRELATION_LEIDEN_0.1+0.1_clusterObj2.rds")
+# clusterInfo <- data.frame("cluster_assignments" = clusterObj$membership, "clustered_nodes" = clusterObj$names)
+# 
+# StickGp_all <-  clusterObj$names[which(clusterObj$membership == 1)]
+# StickGroup <- rep("StickGroup", length(StickGp_all))
+# names(StickGroup) <- StickGp_all
+# 
+# goodCorGp_all <- clusterObj$names[which(clusterObj$membership != 1)]
+# goodCorGroup <- rep("GoodCorGroup", length(goodCorGp_all))
+# names(goodCorGroup) <- goodCorGp_all
+# 
+# load(file="/home/rstudio/YD/intermediate/ALS/ModuleDetection_0.25/AMYOTROPHIC LATERAL SCLEROSISexcludePro.rdat")
+# UncorGroup <- rep("UncorGroup", length(excludePro)) 
+# names(UncorGroup) <- excludePro
+# 
+# ### Construct the mapping color variable based correlation group derived from community detection
+# CommunityGroup <- c(StickGroup, UncorGroup, goodCorGroup)
+# 
+# names(CommunityGroup)[which(names(CommunityGroup) == "HLA.A")] = "HLA-A"
+# names(CommunityGroup)[which(names(CommunityGroup) == "HLA.E")] = "HLA-E"
+# names(CommunityGroup)[which(names(CommunityGroup) == "HLA.DRA")] = "HLA-DRA"
+# 
+# save(CommunityGroup, file = paste0(intermediatePath,"CommunityGroup.rdat"))
+load(paste0(intermediatePath,"CommunityGroup.rdat"))
+```
+
+```{r, read in LOD Block meta data, echo=FALSE, warning=FALSE, message=FALSE}
+### Read in Limit of detection meta data for both proteins and samples
+# combinedP <- read.csv("/home/rstudio/YD/input/P230192_CSP1-5_CINO_and_C2I2N2O2_EXTENDED_NPX_2024-01-18.csv", sep = ";")
+# dilutionBinF <- combinedP[,c("Assay","Block")] %>% unique() %>% filter(!grepl("control",Assay))
+# Block = dilutionBinF$Block
+# names(Block) <- dilutionBinF$Assay
+# save(Block, file = paste0(intermediatePath,"BorrowedBlock.rdat"))
+load(paste0(intermediatePath,"BorrowedBlock.rdat"))
+
+# LODF <- combinedP[,c("Assay","LOD")] %>% distinct(Assay, .keep_all = TRUE) %>% filter(!grepl("control", Assay)) %>% mutate(Assay = gsub("_",".", Assay)) %>% mutate(Assay = sub("ERVV-1", "ERVV.1", Assay)) %>% mutate(Assay = sub("NT-proBNP", "NT.proBNP", Assay)) %>% filter(Assay %in% colnames(Olink_Frame))
+# LODlist = LODF$LOD
+# names(LODlist) <- LODF$Assay
+# belowLOD_Protein <- sapply(names(LODlist), function(x){100*length(which(Olink_Frame[,x] < LODlist[x]))/nrow(Olink_Frame)})
+# belowLOD_Sample <- sapply(rownames(Olink_Frame), function(x){100*length(which(Olink_Frame[x,] < LODlist[colnames(Olink_Frame)]))/ncol(Olink_Frame)})
+# save(belowLOD_Protein, belowLOD_Sample, file = paste0(intermediatePath,"LODlist.rdat"))
+
+load(paste0(intermediatePath,"LODlist.rdat"))
+```
+
+# Overlap for Samples and Proteins among Three Datasets{.tabset}
+<b><font face="Georgia" size="2em" color="#000000"> The overlapping are based on MS data sets after processing.</font></b>
+
+## Proteins{.tabset}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+set_list <- list(
+  "Olink" = colnames(Olink_Frame),
+  "MSbd" = colnames(DEL_Sample),
+  "MS" = colnames(NON_Sample)
+)
+
+elements <- unique(unlist(set_list))  # Extract all unique elements from sets
+binary_matrix <- as.data.frame(
+  sapply(set_list, function(set) elements %in% set)  # Check presence across sets
+)
+rownames(binary_matrix) <- elements  # Assign row names as elements
+colnames(binary_matrix) <- names(set_list)  # Assign column names as set names
+
+ComplexUpset::upset(
+  binary_matrix,
+  intersect = names(set_list),  # Use the names of the sets as intersection columns
+  name = "Proteins in Sets"  # Label for the UpSet plot
+)
+
+```
+
+## Samples{.tabset}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+set_list <- list(
+  "Olink" = rownames(Olink_Frame),
+  "MSbd" = rownames(DEL_Sample),
+  "MS" = rownames(NON_Sample)
+)
+
+elements <- unique(unlist(set_list))  
+binary_matrix <- as.data.frame(
+  sapply(set_list, function(set) elements %in% set)  
+)
+rownames(binary_matrix) <- elements  
+colnames(binary_matrix) <- names(set_list) 
+
+ComplexUpset::upset(
+  binary_matrix,
+  intersect = names(set_list),  # Use the names of the sets as intersection columns
+  name = "Samples in Sets"  # Label for the UpSet plot
+)
+```
+
+# Protein Specific Correlation{.tabset}
+<b><font face="Georgia" size="2em" color="#000000"> For protein specific correlation calculation between two data sets, common proteins and common samples between those two data sets are used.</font></b>
+
+## Raw vs QCed (Pearson){.tabset}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+plots <- list()
+
+p1 <- interactiveRHO(Olink_Frame, NON_Sample_Raw, Olink_Frame, NON_Sample, Block,  "Protein", "pearson", "Protein Specific Pearson Correlation", "Olink vs Raw MS", "Olink vs QCed MS", "Dilution Bin")
+
+p2 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, DEL_Sample, Block, "Protein", "pearson", "Protein Specific Pearson Correlation", "Olink vs Raw MSbd", "Olink vs QCed MSbd", "Dilution Bin")
+
+p3 <- interactiveRHO(Olink_Frame, DEL_Sample, Olink_Frame, NON_Sample, Block, "Protein", "pearson", "Protein Specific Pearson Correlation", "Olink vs QCed MSbd", "Olink vs QCed MS", "Dilution Bin")
+
+p4 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, NON_Sample_Raw, Block, "Protein", "pearson", "Protein Specific Pearson Correlation", "Olink vs Raw MSbd", "Olink vs Raw MS", "Dilution Bin")
+
+p5 <- interactiveRHO(NON_Sample_Raw, DEL_Sample_Raw, NON_Sample, DEL_Sample, Block, "Protein", "pearson", "Protein Specific Pearson Correlation", "Raw MS vs Raw MSbd", "QCed MS vs QCed MSbd", "Dilution Bin")
+
+p6 <- interactiveRHO(Olink_Frame, NON_Sample_Raw, Olink_Frame, NON_Sample, CommunityGroup,  "Protein", "pearson", "Protein Specific Pearson Correlation", "Olink vs Raw MS", "Olink vs QCed MS", "Community Group")
+
+p7 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, DEL_Sample, CommunityGroup, "Protein", "pearson", "Protein Specific Pearson Correlation", "Olink vs Raw MSbd", "Olink vs QCed MSbd", "Community Group")
+
+p8 <- interactiveRHO(Olink_Frame, DEL_Sample, Olink_Frame, NON_Sample, CommunityGroup, "Protein", "pearson", "Protein Specific Pearson Correlation", "Olink vs QCed MSbd", "Olink vs QCed MS", "Community Group")
+
+p9 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, NON_Sample_Raw, CommunityGroup, "Protein", "pearson", "Protein Specific Pearson Correlation", "Olink vs Raw MSbd", "Olink vs Raw MS", "Community Group")
+
+p10 <- interactiveRHO(NON_Sample_Raw, DEL_Sample_Raw, NON_Sample, DEL_Sample, CommunityGroup, "Protein", "pearson", "Protein Specific Pearson Correlation", "Raw MS vs Raw MSbd", "QCed MS vs QCed MSbd", "Community Group")
+
+p11 <- interactiveRHO(Olink_Frame, NON_Sample_Raw, Olink_Frame, NON_Sample, belowLOD_Protein,  "Protein", "pearson", "Protein Specific Pearson Correlation", "Olink vs Raw MS", "Olink vs QCed MS", "Proportion of Samples\nbelow LOD")
+
+p12 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, DEL_Sample, belowLOD_Protein, "Protein", "pearson", "Protein Specific Pearson Correlation", "Olink vs Raw MSbd", "Olink vs QCed MSbd", "Proportion of Samples\nbelow LOD")
+
+p13 <- interactiveRHO(Olink_Frame, DEL_Sample, Olink_Frame, NON_Sample, belowLOD_Protein, "Protein", "pearson", "Protein Specific Pearson Correlation", "Olink vs QCed MSbd", "Olink vs QCed MS", "Proportion of Samples\nbelow LOD")
+
+p14 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, NON_Sample_Raw, belowLOD_Protein, "Protein", "pearson", "Protein Specific Pearson Correlation", "Olink vs Raw MSbd", "Olink vs Raw MS", "Proportion of Samples\nbelow LOD")
+
+plots <- append(plots, list(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14))
+
+tagList(plots)
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+p1 <- scatterHist(Olink_Frame, NON_Sample_Raw, Olink_Frame, NON_Sample, "Protein", "pearson", "", "Olink vs Raw MS", "Olink vs QCed MS")
+
+p2 <- scatterHist(Olink_Frame, DEL_Sample_Raw, Olink_Frame, DEL_Sample, "Protein", "pearson", "", "Olink vs Raw MSbd", "Olink vs QCed MSbd")
+
+p3 <- scatterHist(DEL_Sample_Raw, NON_Sample_Raw, DEL_Sample, NON_Sample, "Protein", "pearson", "", "Raw MS vs Raw MSbd", "QCed MS vs QCed MSbd")
+
+p4 <- scatterHist(Olink_Frame, DEL_Sample, Olink_Frame, NON_Sample,"Protein", "pearson", "", "Olink vs QCed MSbd", "Olink vs QCed MS")
+
+title <- ggdraw() + draw_label("Protein Specific Pearson Correlation", fontface = 'bold', size = 14) 
+
+plot_row <- plot_grid(p1, p2, p3, p4, nrow=2, align = "hv")
+
+final_plot <- plot_grid(title, plot_row, ncol=1, rel_heights = c(0.1,0.9))
+
+print(final_plot)
+
+```
+
+## Raw vs QCed (Spearman){.tabset}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+plots <- list()
+
+p1 <- interactiveRHO(Olink_Frame, NON_Sample_Raw, Olink_Frame, NON_Sample, Block, "Protein", "spearman", "Protein Specific Pearson Correlation", "Olink vs Raw MS", "Olink vs QCed MS", "Dilution Bin")
+
+p2 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, DEL_Sample, Block, "Protein", "spearman", "Protein Specific Pearson Correlation", "Olink vs Raw MSbd", "Olink vs QCed MSbd", "Dilution Bin")
+
+p3 <- interactiveRHO(Olink_Frame, DEL_Sample, Olink_Frame, NON_Sample, Block, "Protein", "spearman", "Protein Specific Pearson Correlation", "Olink vs QCed MSbd", "Olink vs QCed MS", "Dilution Bin")
+
+p4 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, NON_Sample_Raw, Block, "Protein", "spearman", "Protein Specific Pearson Correlation", "Olink vs Raw MSbd", "Olink vs Raw MS", "Dilution Bin")
+
+p5 <- interactiveRHO(NON_Sample_Raw, DEL_Sample_Raw, NON_Sample, DEL_Sample, Block, "Protein", "spearman", "Protein Specific Pearson Correlation", "Raw MS vs Raw MSbd", "QCed MS vs QCed MSbd", "Dilution Bin")
+
+p6 <- interactiveRHO(Olink_Frame, NON_Sample_Raw, Olink_Frame, NON_Sample, CommunityGroup,  "Protein", "spearman", "Protein Specific Pearson Correlation", "Olink vs Raw MS", "Olink vs QCed MS", "Dilution Bin")
+
+p7 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, DEL_Sample, CommunityGroup, "Protein", "spearman", "Protein Specific Pearson Correlation", "Olink vs Raw MSbd", "Olink vs QCed MSbd", "Dilution Bin")
+
+p8 <- interactiveRHO(Olink_Frame, DEL_Sample, Olink_Frame, NON_Sample, CommunityGroup, "Protein", "spearman", "Protein Specific Pearson Correlation", "Olink vs QCed MSbd", "Olink vs QCed MS", "Dilution Bin")
+
+p9 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, NON_Sample_Raw, CommunityGroup, "spearman", "pearson", "Protein Specific Pearson Correlation", "Olink vs Raw MSbd", "Olink vs Raw MS", "Dilution Bin")
+
+p10 <- interactiveRHO(NON_Sample_Raw, DEL_Sample_Raw, NON_Sample, DEL_Sample, CommunityGroup, "spearman", "pearson", "Protein Specific Pearson Correlation", "Raw MS vs Raw MSbd", "QCed MS vs QCed MSbd", "Dilution Bin")
+
+p11 <- interactiveRHO(Olink_Frame, NON_Sample_Raw, Olink_Frame, NON_Sample, belowLOD_Protein,  "Protein", "spearman", "Protein Specific Pearson Correlation", "Olink vs Raw MS", "Olink vs QCed MS", "Proportion of Samples\nbelow LOD")
+
+p12 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, DEL_Sample, belowLOD_Protein, "Protein", "spearman", "Protein Specific Pearson Correlation", "Olink vs Raw MSbd", "Olink vs QCed MSbd", "Proportion of Samples\nbelow LOD")
+
+p13 <- interactiveRHO(Olink_Frame, DEL_Sample, Olink_Frame, NON_Sample, belowLOD_Protein, "Protein", "spearman", "Protein Specific Pearson Correlation", "Olink vs QCed MSbd", "Olink vs QCed MS", "Proportion of Samples\nbelow LOD")
+
+p14 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, NON_Sample_Raw, belowLOD_Protein, "Protein", "spearman", "Protein Specific Pearson Correlation", "Olink vs Raw MSbd", "Olink vs Raw MS", "Proportion of Samples\nbelow LOD")
+
+fig <- subplot(p1, p6, p11, p2, p7, p12, p3, p8, p13, p4, p9, p14, p5, p10, ncol = 3) 
+plots <- append(plots, list(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14))
+
+tagList(plots)
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+p1 <- scatterHist(Olink_Frame, NON_Sample_Raw, Olink_Frame, NON_Sample, "Protein", "spearman", "", "Olink vs Raw MS", "Olink vs QCed MS")
+
+p2 <- scatterHist(Olink_Frame, DEL_Sample_Raw, Olink_Frame, DEL_Sample, "Protein", "spearman", "", "Olink vs Raw MSbd", "Olink vs QCed MSbd")
+
+p3 <- scatterHist(DEL_Sample_Raw, NON_Sample_Raw, DEL_Sample, NON_Sample, "Protein", "spearman", "", "Raw MS vs Raw MSbd", "QCed MS vs QCed MSbd")
+
+p4 <- scatterHist(Olink_Frame, DEL_Sample, Olink_Frame, NON_Sample,"Protein", "spearman", "", "Olink vs QCed MSbd", "Olink vs QCed MS")
+
+title <- ggdraw() + draw_label("Protein Specific Spearman Correlation", fontface = 'bold', size = 14) 
+
+plot_row <- plot_grid(p1, p2, p3, p4, nrow=2, align = "hv")
+
+final_plot <- plot_grid(title, plot_row, ncol=1, rel_heights = c(0.1,0.9))
+
+print(final_plot)
+
+```
+
+<b><font face="Georgia" size="2em" color="#000000"> Jensen–Shannon divergence measures the similarity between two probability distributions. </font></b>
+
+## Raw vs QCed (kendall){.tabset}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+plots <- list()
+
+p1 <- interactiveRHO(Olink_Frame, NON_Sample_Raw, Olink_Frame, NON_Sample, Block, "Protein", "kendall", "Protein Specific Pearson Correlation", "Olink vs Raw MS", "Olink vs QCed MS", "Dilution Bin")
+
+p2 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, DEL_Sample, Block, "Protein", "kendall", "Protein Specific Pearson Correlation", "Olink vs Raw MSbd", "Olink vs QCed MSbd", "Dilution Bin")
+
+p3 <- interactiveRHO(Olink_Frame, DEL_Sample, Olink_Frame, NON_Sample, Block, "Protein", "kendall", "Protein Specific Pearson Correlation", "Olink vs QCed MSbd", "Olink vs QCed MS", "Dilution Bin")
+
+p4 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, NON_Sample_Raw, Block, "Protein", "kendall", "Protein Specific Pearson Correlation", "Olink vs Raw MSbd", "Olink vs Raw MS", "Dilution Bin")
+
+p5 <- interactiveRHO(NON_Sample_Raw, DEL_Sample_Raw, NON_Sample, DEL_Sample, Block, "Protein", "kendall", "Protein Specific Pearson Correlation", "Raw MS vs Raw MSbd", "QCed MS vs QCed MSbd", "Dilution Bin")
+
+p6 <- interactiveRHO(Olink_Frame, NON_Sample_Raw, Olink_Frame, NON_Sample, CommunityGroup,  "Protein", "kendall", "Protein Specific Pearson Correlation", "Olink vs Raw MS", "Olink vs QCed MS", "Dilution Bin")
+
+p7 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, DEL_Sample, CommunityGroup, "Protein", "kendall", "Protein Specific Pearson Correlation", "Olink vs Raw MSbd", "Olink vs QCed MSbd", "Dilution Bin")
+
+p8 <- interactiveRHO(Olink_Frame, DEL_Sample, Olink_Frame, NON_Sample, CommunityGroup, "Protein", "kendall", "Protein Specific Pearson Correlation", "Olink vs QCed MSbd", "Olink vs QCed MS", "Dilution Bin")
+
+p9 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, NON_Sample_Raw, CommunityGroup, "kendall", "pearson", "Protein Specific Pearson Correlation", "Olink vs Raw MSbd", "Olink vs Raw MS", "Dilution Bin")
+
+p10 <- interactiveRHO(NON_Sample_Raw, DEL_Sample_Raw, NON_Sample, DEL_Sample, CommunityGroup, "kendall", "pearson", "Protein Specific Pearson Correlation", "Raw MS vs Raw MSbd", "QCed MS vs QCed MSbd", "Dilution Bin")
+
+p11 <- interactiveRHO(Olink_Frame, NON_Sample_Raw, Olink_Frame, NON_Sample, belowLOD_Protein,  "Protein", "kendall", "Protein Specific Pearson Correlation", "Olink vs Raw MS", "Olink vs QCed MS", "Proportion of Samples\nbelow LOD")
+
+p12 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, DEL_Sample, belowLOD_Protein, "Protein", "kendall", "Protein Specific Pearson Correlation", "Olink vs Raw MSbd", "Olink vs QCed MSbd", "Proportion of Samples\nbelow LOD")
+
+p13 <- interactiveRHO(Olink_Frame, DEL_Sample, Olink_Frame, NON_Sample, belowLOD_Protein, "Protein", "kendall", "Protein Specific Pearson Correlation", "Olink vs QCed MSbd", "Olink vs QCed MS", "Proportion of Samples\nbelow LOD")
+
+p14 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, NON_Sample_Raw, belowLOD_Protein, "Protein", "kendall", "Protein Specific Pearson Correlation", "Olink vs Raw MSbd", "Olink vs Raw MS", "Proportion of Samples\nbelow LOD")
+
+plots <- append(plots, list(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14))
+
+tagList(plots)
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+p1 <- scatterHist(Olink_Frame, NON_Sample_Raw, Olink_Frame, NON_Sample, "Protein", "kendall", "", "Olink vs Raw MS", "Olink vs QCed MS")
+
+p2 <- scatterHist(Olink_Frame, DEL_Sample_Raw, Olink_Frame, DEL_Sample, "Protein", "kendall", "", "Olink vs Raw MSbd", "Olink vs QCed MSbd")
+
+p3 <- scatterHist(DEL_Sample_Raw, NON_Sample_Raw, DEL_Sample, NON_Sample, "Protein", "kendall", "", "Raw MS vs Raw MSbd", "QCed MS vs QCed MSbd")
+
+p4 <- scatterHist(Olink_Frame, DEL_Sample, Olink_Frame, NON_Sample,"Protein", "kendall", "", "Olink vs QCed MSbd", "Olink vs QCed MS")
+
+title <- ggdraw() + draw_label("Protein Specific Kendall Correlation", fontface = 'bold', size = 14) 
+
+plot_row <- plot_grid(p1, p2, p3, p4, nrow=2, align = "hv")
+
+final_plot <- plot_grid(title, plot_row, ncol=1, rel_heights = c(0.1,0.9))
+
+print(final_plot)
+
+```
+
+## Jensen–Shannon Divergence (QCed MS and QCed MSbd){.tabset}
+<b><font face="Georgia" size="2em" color="#000000"> Jensen–Shannon divergence measures the similarity between two probability distributions. </font></b>
+
+```{r, echo=FALSE, results = FALSE, warning=FALSE, message=FALSE}
+#getIndividualJS(Olink_Frame, DEL_Sample, "Sample", "Olink vs QCed MSbd")
+
+#getIndividualJS(Olink_Frame, NON_Sample, "Protein", "Olink vs QCed MS")
+
+getIndividualJS(DEL_Sample, NON_Sample, "Protein", " QCed MS vs QCed MSbd")
+
+```
+
+## MS Data at Different Normliastion Stages{.tabset}
+<b><font face="Georgia" size="2em" color="#000000"> Investigate whether particular MS data processing steps distort protein correlation.</font></b>
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+# fileList <- grep("csv",list.files("/home/rstudio/YD/MS/intermediate/BEADdel/SAMPLE/", pattern = "ProDat_"), value = TRUE)
+fileList <- c("ProDat_RmContam.csv", "ProDat_RmLargeMiss.csv", "ProDat_RFimput.csv", "ProDat_RMoutlier.csv", "ProDat_BatchCorrected.csv")
+plots <- list()
+
+for(whichFile in fileList){
+  DEL_Sample_DiffNorm <-  read.table(paste0("/home/rstudio/YD/MS/intermediate/BEADdel/SAMPLE/", whichFile))
+  NON_Sample_DiffNorm <- read.table(paste0("/home/rstudio/YD/MS/intermediate/NONdel/SAMPLE/", whichFile))
+  
+  colnames(DEL_Sample_DiffNorm) <- sapply(colnames(DEL_Sample_DiffNorm), function(x){DEL_ProMap[which(DEL_ProMap$Protein.Group==x),"Genes"]})
+  colnames(NON_Sample_DiffNorm) <- sapply(colnames(NON_Sample_DiffNorm), function(x){NON_ProMap[which(NON_ProMap$Protein.Group==x),"Genes"]})
+  
+  pearsonCor1 <- getIndividualRelation(Olink_Frame, NON_Sample_DiffNorm, "Protein", "pearson")
+  pearsonCor2 <- getIndividualRelation(Olink_Frame, DEL_Sample_DiffNorm, "Protein", "pearson")
+  pearsonCor3 <- getIndividualRelation(DEL_Sample_DiffNorm, NON_Sample_DiffNorm, "Protein", "pearson")
+  
+  common_elements <- Reduce(intersect, list(names(pearsonCor1), names(pearsonCor2), names(pearsonCor3)))
+  
+  par(mfrow=c(1,3))
+  hist(pearsonCor1, breaks=100, xlab = paste0(length(intersect(rownames(Olink_Frame), rownames(NON_Sample_DiffNorm))), " Samples ", length(intersect(colnames(Olink_Frame), colnames(NON_Sample_DiffNorm))), " Proteins"), xlim = c(-1,1), main=paste0("Protein Pearson Correlation\nOlink vs MS ", sub(".csv","",whichFile)), cex.main=0.9)
+  hist(pearsonCor2, breaks=100, xlab = paste0(length(intersect(rownames(Olink_Frame), rownames(DEL_Sample_DiffNorm))), " Samples ", length(intersect(colnames(Olink_Frame), colnames(DEL_Sample_DiffNorm))), " Proteins"), xlim = c(-1,1), main=paste0("Protein Pearson Correlation\nOlink vs MSbd", sub(".csv","",whichFile)), cex.main=0.9)
+  hist(pearsonCor3, breaks=100, xlab = paste0(length(intersect(rownames(NON_Sample_DiffNorm), rownames(DEL_Sample_DiffNorm))), " Samples ", length(intersect(colnames(NON_Sample_DiffNorm), colnames(DEL_Sample_DiffNorm))), " Proteins"), xlim = c(-1,1), main=paste0("Protein Pearson Correlation\n MS vs MSbd", sub(".csv","",whichFile)), cex.main=0.9)
+}
+```
+
+
+# Sample Specific Correlation{.tabset}
+<b><font face="Georgia" size="2em" color="#000000"> For sample specific correlation calculation between two data sets, common proteins and common samples between those two data sets are used.</font></b>
+
+## Raw vs QCed (pearson){.tabset}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+plots <- list()
+
+p1 <- interactiveRHO(Olink_Frame, NON_Sample_Raw, Olink_Frame, NON_Sample, "","Sample", "pearson", "Sample Specific Pearson Correlation", "Olink vs Raw MS", "Olink vs QCed MS", "Dilution Bin")
+
+p2 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, DEL_Sample, "","Sample", "pearson", "Sample Specific Pearson Correlation", "Olink vs Raw MSbd", "Olink vs QCed MSbd", "Dilution Bin")
+
+p3 <- interactiveRHO(Olink_Frame, DEL_Sample, Olink_Frame, NON_Sample, "","Sample", "pearson", "Sample Specific Pearson Correlation", "Olink vs QCed MSbd", "Olink vs QCed MS", "Dilution Bin")
+
+p4 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, NON_Sample_Raw, "","Sample", "pearson", "Sample Specific Pearson Correlation", "Olink vs Raw MSbd", "Olink vs Raw MS", "Dilution Bin")
+
+p5 <- interactiveRHO(NON_Sample_Raw, DEL_Sample_Raw, NON_Sample, DEL_Sample, "","Sample", "pearson", "Sample Specific Pearson Correlation", "Raw MS vs Raw MSbd", "QCed MS vs QCed MSbd", "Dilution Bin")
+
+p6 <- interactiveRHO(Olink_Frame, NON_Sample_Raw, Olink_Frame, NON_Sample, belowLOD_Sample, "Sample", "pearson", "Sample Specific Pearson Correlation", "Olink vs Raw MS", "Olink vs QCed MS", "Proportion of Proteins Below LOD (%)")
+
+p7 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, DEL_Sample, belowLOD_Sample, "Sample", "pearson", "Sample Specific Pearson Correlation", "Olink vs Raw MSbd", "Olink vs QCed MSbd", "Proportion of Proteins Below LOD (%)")
+
+p8 <- interactiveRHO(Olink_Frame, DEL_Sample, Olink_Frame, NON_Sample, belowLOD_Sample, "Sample", "pearson", "Sample Specific Pearson Correlation", "Olink vs QCed MSbd", "Olink vs QCed MS", "Proportion of Proteins Below LOD (%)")
+
+p9 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, NON_Sample_Raw, belowLOD_Sample, "Sample", "pearson", "Sample Specific Pearson Correlation", "Olink vs Raw MSbd", "Olink vs Raw MS", "Proportion of Proteins Below LOD (%)")
+
+plots <- append(plots, list(p1, p2, p3, p4, p5, p6, p7, p8, p9))
+
+tagList(plots)
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+p1 <- scatterHist(Olink_Frame, NON_Sample_Raw, Olink_Frame, NON_Sample, "Sample", "pearson", "", "Olink vs Raw MS", "Olink vs QCed MS")
+
+p2 <- scatterHist(Olink_Frame, DEL_Sample_Raw, Olink_Frame, DEL_Sample, "Sample", "pearson", "", "Olink vs Raw MSbd", "Olink vs QCed MSbd")
+
+p3 <- scatterHist(DEL_Sample_Raw, NON_Sample_Raw, DEL_Sample, NON_Sample, "Sample", "pearson", "", "Raw MS vs Raw MSbd", "QCed MS vs QCed MSbd")
+
+p4 <- scatterHist(Olink_Frame, DEL_Sample, Olink_Frame, NON_Sample,"Sample", "pearson", "", "Olink vs QCed MSbd", "Olink vs QCed MS")
+
+title <- ggdraw() + draw_label("Sample Specific Pearson Correlation", fontface = 'bold', size = 14) 
+
+plot_row <- plot_grid(p1, p2, p3, p4, nrow=2, align = "hv")
+
+final_plot <- plot_grid(title, plot_row, ncol=1, rel_heights = c(0.1,0.9))
+
+print(final_plot)
+```
+
+## Raw vs QCed (spearman){.tabset}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+plots <- list()
+
+p1 <- interactiveRHO(Olink_Frame, NON_Sample_Raw, Olink_Frame, NON_Sample, "","Sample", "spearman", "Sample Specific Spearman Correlation", "Olink vs Raw MS", "Olink vs QCed MS", "Dilution Bin")
+
+p2 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, DEL_Sample, "","Sample", "spearman", "Sample Specific Spearman Correlation", "Olink vs Raw MSbd", "Olink vs QCed MSbd", "Dilution Bin")
+
+p3 <- interactiveRHO(Olink_Frame, DEL_Sample, Olink_Frame, NON_Sample, "","Sample", "spearman", "Sample Specific Spearman Correlation", "Olink vs QCed MSbd", "Olink vs QCed MS", "Dilution Bin")
+
+p4 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, NON_Sample_Raw, "","Sample", "spearman", "Sample Specific Spearman Correlation", "Olink vs Raw MSbd", "Olink vs Raw MS", "Dilution Bin")
+
+p5 <- interactiveRHO(NON_Sample_Raw, DEL_Sample_Raw, NON_Sample, DEL_Sample, "","Sample", "spearman", "Sample Specific Spearman Correlation", "Raw MS vs Raw MSbd", "QCed MS vs QCed MSbd", "Dilution Bin")
+
+p6 <- interactiveRHO(Olink_Frame, NON_Sample_Raw, Olink_Frame, NON_Sample, belowLOD_Sample, "Sample", "spearman", "Sample Specific Pearson Correlation", "Olink vs Raw MS", "Olink vs QCed MS", "Proportion of Proteins Below LOD (%)")
+
+p7 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, DEL_Sample, belowLOD_Sample, "Sample", "spearman", "Sample Specific Pearson Correlation", "Olink vs Raw MSbd", "Olink vs QCed MSbd", "Proportion of Proteins Below LOD (%)")
+
+p8 <- interactiveRHO(Olink_Frame, DEL_Sample, Olink_Frame, NON_Sample, belowLOD_Sample, "Sample", "spearman", "Sample Specific Pearson Correlation", "Olink vs QCed MSbd", "Olink vs QCed MS", "Proportion of Proteins Below LOD (%)")
+
+p9 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, NON_Sample_Raw, belowLOD_Sample, "Sample", "spearman", "Sample Specific Pearson Correlation", "Olink vs Raw MSbd", "Olink vs Raw MS", "Proportion of Proteins Below LOD (%)")
+
+plots <- append(plots, list(p1, p2, p3, p4, p5, p6, p7, p8, p9))
+
+tagList(plots)
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+p1 <- scatterHist(Olink_Frame, NON_Sample_Raw, Olink_Frame, NON_Sample, "Sample", "spearman", "", "Olink vs Raw MS", "Olink vs QCed MS")
+
+p2 <- scatterHist(Olink_Frame, DEL_Sample_Raw, Olink_Frame, DEL_Sample, "Sample", "spearman", "", "Olink vs Raw MSbd", "Olink vs QCed MSbd")
+
+p3 <- scatterHist(DEL_Sample_Raw, NON_Sample_Raw, DEL_Sample, NON_Sample, "Sample", "spearman", "", "Raw MS vs Raw MSbd", "QCed MS vs QCed MSbd")
+
+p4 <- scatterHist(Olink_Frame, DEL_Sample, Olink_Frame, NON_Sample,"Sample", "spearman", "", "Olink vs QCed MSbd", "Olink vs QCed MS")
+
+title <- ggdraw() + draw_label("Sample Specific Spearman Correlation", fontface = 'bold', size = 14) 
+
+plot_row <- plot_grid(p1, p2, p3, p4, nrow=2, align = "hv")
+
+final_plot <- plot_grid(title, plot_row, ncol=1, rel_heights = c(0.1,0.9))
+
+print(final_plot)
+```
+
+## Raw vs QCed (kendall){.tabset}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+plots <- list()
+
+p1 <- interactiveRHO(Olink_Frame, NON_Sample_Raw, Olink_Frame, NON_Sample, "","Sample", "kendall", "Sample Specific Kendall Correlation", "Olink vs Raw MS", "Olink vs QCed MS", "Dilution Bin")
+
+p2 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, DEL_Sample, "","Sample", "kendall", "Sample Specific Kendall Correlation", "Olink vs Raw MSbd", "Olink vs QCed MSbd", "Dilution Bin")
+
+p3 <- interactiveRHO(Olink_Frame, DEL_Sample, Olink_Frame, NON_Sample, "","Sample", "kendall", "Sample Specific Kendall Correlation", "Olink vs QCed MSbd", "Olink vs QCed MS", "Dilution Bin")
+
+p4 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, NON_Sample_Raw, "","Sample", "kendall", "Sample Specific Kendall Correlation", "Olink vs Raw MSbd", "Olink vs Raw MS", "Dilution Bin")
+
+p5 <- interactiveRHO(NON_Sample_Raw, DEL_Sample_Raw, NON_Sample, DEL_Sample, "","Sample", "kendall", "Sample Specific Kendall Correlation", "Raw MS vs Raw MSbd", "QCed MS vs QCed MSbd", "Dilution Bin")
+
+p6 <- interactiveRHO(Olink_Frame, NON_Sample_Raw, Olink_Frame, NON_Sample, belowLOD_Sample, "Sample", "kendall", "Sample Specific Pearson Correlation", "Olink vs Raw MS", "Olink vs QCed MS", "Proportion of Proteins Below LOD (%)")
+
+p7 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, DEL_Sample, belowLOD_Sample, "Sample", "kendall", "Sample Specific Pearson Correlation", "Olink vs Raw MSbd", "Olink vs QCed MSbd", "Proportion of Proteins Below LOD (%)")
+
+p8 <- interactiveRHO(Olink_Frame, DEL_Sample, Olink_Frame, NON_Sample, belowLOD_Sample, "Sample", "kendall", "Sample Specific Pearson Correlation", "Olink vs QCed MSbd", "Olink vs QCed MS", "Proportion of Proteins Below LOD (%)")
+
+p9 <- interactiveRHO(Olink_Frame, DEL_Sample_Raw, Olink_Frame, NON_Sample_Raw, belowLOD_Sample, "Sample", "kendall", "Sample Specific Pearson Correlation", "Olink vs Raw MSbd", "Olink vs Raw MS", "Proportion of Proteins Below LOD (%)")
+
+plots <- append(plots, list(p1, p2, p3, p4, p5, p6, p7, p8, p9))
+
+
+tagList(plots)
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+p1 <- scatterHist(Olink_Frame, NON_Sample_Raw, Olink_Frame, NON_Sample, "Sample", "kendall", "", "Olink vs Raw MS", "Olink vs QCed MS")
+
+p2 <- scatterHist(Olink_Frame, DEL_Sample_Raw, Olink_Frame, DEL_Sample, "Sample", "kendall", "", "Olink vs Raw MSbd", "Olink vs QCed MSbd")
+
+p3 <- scatterHist(DEL_Sample_Raw, NON_Sample_Raw, DEL_Sample, NON_Sample, "Sample", "kendall", "", "Raw MS vs Raw MSbd", "QCed MS vs QCed MSbd")
+
+p4 <- scatterHist(Olink_Frame, DEL_Sample, Olink_Frame, NON_Sample,"Sample", "kendall", "", "Olink vs QCed MSbd", "Olink vs QCed MS")
+
+title <- ggdraw() + draw_label("Sample Specific Kendall Correlation", fontface = 'bold', size = 14) 
+
+plot_row <- plot_grid(p1, p2, p3, p4, nrow=2, align = "hv")
+
+final_plot <- plot_grid(title, plot_row, ncol=1, rel_heights = c(0.1,0.9))
+
+print(final_plot)
+```
+
+## MS Data at Different Normliastion Stages{.tabset}
+<b><font face="Georgia" size="2em" color="#000000"> Investigate whether particular MS data processing steps distort sample correlation.</font></b>
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+for(whichFile in fileList){
+  DEL_Sample_DiffNorm <-  read.table(paste0("/home/rstudio/YD/MS/intermediate/BEADdel/SAMPLE/", whichFile))
+  NON_Sample_DiffNorm <- read.table(paste0("/home/rstudio/YD/MS/intermediate/NONdel/SAMPLE/", whichFile))
+  
+  colnames(DEL_Sample_DiffNorm) <- sapply(colnames(DEL_Sample_DiffNorm), function(x){DEL_ProMap[which(DEL_ProMap$Protein.Group==x),"Genes"]})
+  colnames(NON_Sample_DiffNorm) <- sapply(colnames(NON_Sample_DiffNorm), function(x){NON_ProMap[which(NON_ProMap$Protein.Group==x),"Genes"]})
+  
+  pearsonCor1 <- getIndividualRelation(Olink_Frame, DEL_Sample_DiffNorm, "Sample", "pearson")
+  pearsonCor2 <- getIndividualRelation(Olink_Frame, NON_Sample_DiffNorm, "Sample", "pearson")
+  pearsonCor3 <- getIndividualRelation(DEL_Sample_DiffNorm, NON_Sample_DiffNorm, "Sample", "pearson")
+  
+  common_elements <- Reduce(intersect, list(names(pearsonCor1), names(pearsonCor2), names(pearsonCor3)))
+  
+  par(mfrow=c(1,3))
+  hist(pearsonCor2, breaks=100, xlab = paste0(length(intersect(rownames(Olink_Frame), rownames(NON_Sample_DiffNorm))), "Samples ", length(intersect(colnames(Olink_Frame), colnames(NON_Sample_DiffNorm))), " Proteins"), xlim = c(-1,1), main=paste0("Sample Pearson Correlation\nOlink vs MS ", sub(".csv","",whichFile)), cex.main = 0.8)
+  hist(pearsonCor1, breaks=100, xlab = paste0(length(intersect(rownames(Olink_Frame), rownames(DEL_Sample_DiffNorm))), "Samples ", length(intersect(colnames(Olink_Frame), colnames(DEL_Sample_DiffNorm))), " Proteins"), xlim = c(-1,1), main=paste0("Sample Pearson Correlation\nOlink vs MSbd", sub(".csv","",whichFile)), cex.main = 0.8)
+  hist(pearsonCor3, breaks=100, xlab = paste0(length(intersect(rownames(NON_Sample_DiffNorm), rownames(DEL_Sample_DiffNorm))), "Samples ", length(intersect(colnames(NON_Sample_DiffNorm), colnames(DEL_Sample_DiffNorm))), " Proteins"), xlim = c(-1,1), main=paste0("Sample Pearson Correlation\n MS vs MSbd", sub(".csv","",whichFile)), cex.main = 0.8)
+  
+}  
+```
+
+# Spectral Analysis based on PCA{.tabset}
+<b><font face="Georgia" size="2em" color="#000000"> The spectral properties of PCA eigenvalues are closely related to the covariance of features, and they can provide hints about clustering tendencies and global data geometry. Common proteins and common samples across the three data sets are adopted. </font></b>
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+all_overlap_sample <- Reduce(intersect, list(rownames(DEL_Sample), rownames(NON_Sample), rownames(Olink_Frame)))
+all_overlap_protein <- Reduce(intersect, list(colnames(DEL_Sample), colnames(NON_Sample), colnames(Olink_Frame)))
+
+PCA_DEL <- prcomp(DEL_Sample[all_overlap_sample,all_overlap_protein], scale = FALSE)
+PCA_NON <- prcomp(NON_Sample[all_overlap_sample,all_overlap_protein], scale = FALSE)
+PCA_Olink <- prcomp(Olink_Frame[all_overlap_sample,all_overlap_protein], scale = FALSE)
+
+Eigen_DEL <- get_eigenvalue(PCA_DEL)$eigenvalue
+Eigen_NON <- get_eigenvalue(PCA_NON)$eigenvalue
+Eigen_Olink <- get_eigenvalue(PCA_Olink)$eigenvalue
+
+EigenData <- data.frame(
+  "MSbd" = Eigen_DEL/sum(Eigen_DEL),
+  "MS" = Eigen_NON/sum(Eigen_NON),
+  "Olink" = Eigen_Olink/sum(Eigen_Olink),
+  "SampName" = all_overlap_sample
+)
+
+pairs(EigenData[,1:3], main = paste0("Spectra Comparison\n", length(all_overlap_sample), " Samples ", length(all_overlap_protein), " Proteins"), cex.main = 0.9)
+
+# Create a 3D scatter plot
+plot_ly(EigenData, x = ~MSbd, y = ~MS, z = ~Olink,
+        title = "Spectral Distance",
+        type = "scatter3d", mode = "markers",
+        text = ~paste0("(", signif(MSbd, digits=2), ", ", signif(MS, digits=2), ", ", signif(Olink, digits=2), ")"), hoverinfo = "text",
+        marker = list(size = 2, colorscale = "Viridis"))
+```
+
+<!-- ## Network based Comparison{.tabset} -->
+<!-- <b><font face="Georgia" size="2em" color="#000000"> We calculate mean node (protein) connectivity based on the adjacency matrix derived from pairwise protein pearson correlation coefficient. </font></b> -->
+
+<!-- ```{r, echo=FALSE, warning=FALSE, message=FALSE} -->
+<!-- keepSamp <- Reduce(intersect, list(rownames(NON_Sample), rownames(DEL_Sample_Keep), rownames(Olink_Frame))) -->
+<!-- keepPro <- Reduce(intersect, list(colnames(NON_Sample), colnames(DEL_Sample_Keep), colnames(Olink_Frame))) -->
+
+<!-- adjM_DEL <- cor(DEL_Sample_Keep[keepSamp, keepPro], use = "complete.obs", method = "pearson") -->
+<!-- adjM_NON <- cor(NON_Sample[keepSamp, keepPro], use = "complete.obs", method = "pearson") -->
+<!-- adjM_Olink <- cor(Olink_Frame[keepSamp, keepPro], use = "complete.obs", method = "pearson") -->
+
+<!-- degNODE_DEL <- apply(adjM_DEL,2,mean) -->
+<!-- degNODE_NON <-  apply(adjM_NON,2,mean) -->
+<!-- degNODE_Olink <-  apply(adjM_Olink,2,mean) -->
+
+<!-- NodeConnectData <- data.frame( -->
+<!--   "MSbd" = degNODE_DEL, -->
+<!--   "MS" = degNODE_NON, -->
+<!--   "Olink" = degNODE_Olink, -->
+<!--   "ProName" = keepPro -->
+<!-- ) -->
+
+<!-- pairs(NodeConnectData[,c(1:3)], main = paste0("Connectivity of Node derived from Common\n",  length(keepSamp), " Samples ", length(keepPro), " Proteins among All Data Sets"), cex.main = 0.9) -->
+
+<!-- # Create a 3D scatter plot -->
+<!-- plot_ly(NodeConnectData, x = ~MSbd, y = ~MS, z = ~Olink, -->
+<!--         title = "Mean Node Connectivity", -->
+<!--         type = "scatter3d", mode = "markers", -->
+<!--         text = ~ProName, hoverinfo = "text", -->
+<!--         marker = list(size = 2, colorscale = "Viridis")) -->
+<!-- ``` -->
+
+# Artificial Dataset as Reference{.tabset}
+<b><font face="Georgia" size="2em" color="#000000"> There are protein specific correlation coefficients between MS and MSbd not greater than 0.5, but are the correlation signal totally random? We keep the MSbd data set as it is and generate a MS artificial data set, where each feature is randomly draw from Gaussian distribution with the same mean and sd of the origianl feature.</font></b>
+
+## Pearson{.tabset}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+truth_mean <- apply(NON_Sample, 2, mean)
+truth_sd <- apply(NON_Sample, 2, sd)
+
+rand_NON <- matrix(NA, nrow=nrow(NON_Sample), ncol=ncol(NON_Sample))
+for(j in 1:ncol(rand_NON)){
+  rand_NON[,j] <- rnorm(nrow(NON_Sample), truth_mean[j], truth_sd[j])
+}
+rownames(rand_NON) <- rownames(NON_Sample)
+colnames(rand_NON) <- colnames(NON_Sample)
+
+pearsonCor_True <- getIndividualRelation(DEL_Sample, NON_Sample, "Protein", "pearson")
+pearsonCor_Rand <- getIndividualRelation(DEL_Sample, rand_NON, "Protein", "pearson")
+plotCompHist(pearsonCor_True,pearsonCor_Rand,"Pearson Correlation for Proteins")
+
+interactiveRHO(DEL_Sample, NON_Sample, DEL_Sample, rand_NON, "","Protein", "pearson", "Protein Specific Pearson Correlation", "True MSbd vs True MS", "True MSbd vs Random MS", "")
+
+```
+
+## Spearman{.tabset}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+spearmanCor_True <- getIndividualRelation(DEL_Sample, NON_Sample, "Protein", "spearman") 
+spearmanCor_Rand <- getIndividualRelation(DEL_Sample, rand_NON, "Protein", "spearman") 
+plotCompHist(spearmanCor_True,spearmanCor_Rand,"Spearman Correlation for Proteins")
+
+interactiveRHO(DEL_Sample, NON_Sample, DEL_Sample, rand_NON, "","Protein", "spearman", "Protein Specific Pearson Correlation", "True MSbd vs True MS", "True MSbd vs Random MS", "")
+```
+
+
+<!-- # Overlap of Samples on UMAP{.tabset} -->
+<!-- ```{r, echo=FALSE, warning=FALSE, message=FALSE} -->
+<!-- UmapOverlap2(NON_Sample, DEL_Sample, "MS", "MSbd") -->
+<!-- UmapOverlap2(Olink_Frame, NON_Sample, "Olink", "MS") -->
+<!-- UmapOverlap2(Olink_Frame, DEL_Sample, "Olink", "MSbd") -->
+<!-- ``` -->

@@ -1,0 +1,375 @@
+---
+title: "Comparisons between Depleted and Non-depleted MS Data"
+output:
+  html_document:
+    toc: true
+    toc_float: 
+      collapsed: false
+      smooth_scroll: true
+---
+<!-- Inline CSS for Fire Red Titles -->
+<style>
+h1 {
+color: darkblue; /* set the darkblue color */
+font-size: 25px; /* decrease font size */
+}
+</style>
+
+```{r, Prepare, echo=FALSE, warning=FALSE, message=FALSE, results=F}
+# Load required libraries
+library(optparse)
+library(readxl)
+library(tidyverse)
+library(magrittr)
+library(stringr)
+library(VennDiagram)
+library(LaplacesDemon)
+library(philentropy)
+library(lsa)
+library(igraph)
+library(ggplot2)
+library(ggExtra)
+library(factoextra)
+library(umap)
+library(plotly)
+library(GGally)
+
+option_list <- list(
+  make_option(c("-i", "--inputPath"), type = "character", default = "/home/rstudio/YD/MS/input/",
+              help = "Path to input files.", metavar = "INPUT_PATH"),
+  make_option(c("-o", "--outPath"), type = "character", default = "/home/rstudio/YD/MS/output/Compare/",
+              help = "Path to output files.", metavar = "OUTPUT_PATH"),
+  make_option(c("-m", "--intermediatePath"), type = "character", default = "/home/rstudio/YD/MS/intermediate/Compare/",
+              help = "Path to store intermediate data during processing.", metavar = "MD_PATH"),
+  make_option(c("-d","--DEL_file"), type = "character", default = "/home/rstudio/YD/MS/output/BEADdel/SAMPLE/QCed_Frame.csv", 
+              help = "Protein expression input file name.", metavar = "DEL_file"),
+  make_option(c("-n","--NON_file"), type = "character", default = "/home/rstudio/YD/MS/output/NONdel/SAMPLE/QCed_Frame.csv", 
+              help = "Clinical meta input file name.", metavar = "NON_file"),
+  make_option(c("-f", "--pdfFile"), type = "character", default = "QCed_comp.pdf",
+              help = "Path of codes", metavar = "pdfFile"),
+  make_option(c("-s", "--codePath"), type = "character", default = "/home/rstudio/YD/MS/script/",
+              help = "Path of codes", metavar = "CODE_PATH")
+)
+
+# Create an OptionParser object
+parser <- OptionParser(option_list = option_list)
+
+# Parse the command-line arguments
+args <- parse_args(parser)
+
+# Assign parsed values to variables
+inputPath <- args$inputPath
+outPath <- args$outPath
+intermediatePath <- args$intermediatePath
+codePath <- args$codePath
+DEL_file <- args$DEL_file
+NON_file <- args$NON_file
+pdfFile <- args$pdfFile
+
+source(paste0(codePath,"Comp_Dataset_Call.R"))
+
+### DEL Protein Naming Scheme Mapping
+DEL_ProMap <- read_excel(paste0(inputPath, "ProteinMapping/BEADdepletions_ProteinMapping.xlsx"))
+NON_ProMap <- read_excel(paste0(inputPath, "ProteinMapping/NONDEPLETED_ProteinMapping.xlsx"))
+
+### Read in two datasets
+DEL_Sample <-  read.table(DEL_file)
+NON_Sample <- read.table(NON_file)
+if(colnames(DEL_Sample)[1] == "PlateID"){
+  DEL_Sample <- DEL_Sample[,-1]
+  NON_Sample <- NON_Sample[,-1]}
+
+### Using the Entrez Gene Naming scheme
+colnames(DEL_Sample) <- sapply(colnames(DEL_Sample), function(x){DEL_ProMap[which(DEL_ProMap$Protein.Group==x),"Protein.Names"]})
+colnames(NON_Sample) <- sapply(colnames(NON_Sample), function(x){NON_ProMap[which(NON_ProMap$Protein.Group==x),"Protein.Names"]})
+
+commonSamp <- intersect(rownames(DEL_Sample),rownames(NON_Sample))
+commonPro <- intersect(colnames(DEL_Sample),colnames(NON_Sample))
+
+DEL_Sample_Keep <- DEL_Sample[commonSamp,commonPro]
+NON_Sample_Keep <- NON_Sample[commonSamp,commonPro]
+
+### Original Data
+DEL_Sample_Raw <-  read.table("/home/rstudio/YD/MS/intermediate/BEADdel/SAMPLE/ProDat_RmContam.csv")
+NON_Sample_Raw <- read.table("/home/rstudio/YD/MS/intermediate/NONdel/SAMPLE/ProDat_RmContam.csv")
+### Using the Entrez Gene Naming scheme
+colnames(DEL_Sample_Raw) <- sapply(colnames(DEL_Sample_Raw), function(x){DEL_ProMap[which(DEL_ProMap$Protein.Group==x),"Protein.Names"]})
+colnames(NON_Sample_Raw) <- sapply(colnames(NON_Sample_Raw), function(x){NON_ProMap[which(NON_ProMap$Protein.Group==x),"Protein.Names"]})
+```
+
+# Overlap for Samples and Proteins between Two Datasets{.tabset}
+## Proteins{.tabset}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+avoidMess <- makeMyVenn(colnames(DEL_Sample),colnames(NON_Sample),c("DEL_Pro","NON_Pro"))
+```
+
+## Samples{.tabset}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+avoidMess <- makeMyVenn(rownames(DEL_Sample),rownames(NON_Sample),c("DEL_Samp","NON_Samp"))
+```
+
+# Individual Item Correlation between Two Sets{.tabset}
+## Proteins{.tabset}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+### Check the correlation of the same protein (correlation coefficient) between datasets
+pearsonCor <- getIndividualRelation(DEL_Sample_Keep, NON_Sample_Keep, "Protein", "pearson")
+spearmanCor <- getIndividualRelation(DEL_Sample_Keep, NON_Sample_Keep, "Protein", "spearman") 
+kendallCor <- getIndividualRelation(DEL_Sample_Keep, NON_Sample_Keep, "Protein", "kendall") 
+
+pearsonCor_Raw <- getIndividualRelation(DEL_Sample_Raw, NON_Sample_Raw, "Protein", "pearson")
+spearmanCor_Raw <- getIndividualRelation(DEL_Sample_Raw, NON_Sample_Raw, "Protein", "spearman") 
+kendallCor_Raw <- getIndividualRelation(DEL_Sample_Raw, NON_Sample_Raw, "Protein", "kendall") 
+
+### I would like to borrow the dilution bin information from the Olink data to look at the high low abundance category
+# combinedP <- read.csv("/home/rstudio/YD/input/P230192_CSP1-5_CINO_and_C2I2N2O2_EXTENDED_NPX_2024-01-18.csv", sep = ";")
+# dilutionBinF <- combinedP[,c("Assay","Block")]
+# Block = dilutionBinF[sapply(commonPro, function(x){which(dilutionBinF$Assay==x)[1]}),"Block"]
+# names(Block) <- commonPro
+# save(Block, file = paste0(intermediatePath,"BorrowedBlock.rdat"))
+load(paste0(intermediatePath,"BorrowedBlock.rdat"))
+common_Pro_Raw_QCed <- intersect(names(pearsonCor), names(pearsonCor_Raw))
+rho_Pro_Frame <- data.frame(
+  QCed_Correlation = pearsonCor[common_Pro_Raw_QCed],
+  Raw_Correlation = pearsonCor_Raw[common_Pro_Raw_QCed],
+  Observation = common_Pro_Raw_QCed,
+  Block = Block[common_Pro_Raw_QCed]
+)
+
+rho_Pro_Frame %<>% mutate(Block = ifelse(is.na(Block),"no mapping", Block))
+block_colors <- c("A" = "royalblue", "B" = "firebrick", "C" = "darkgreen", "D" = "pink", "no mapping" = "lightyellow")
+
+# Generate interactive plot
+plot_ly(rho_Pro_Frame, x = ~QCed_Correlation, y = ~Raw_Correlation, type = 'scatter', mode = 'markers', 
+        color = ~Block, colors = block_colors, 
+        text = ~paste(Observation, "(", signif(QCed_Correlation,digits=2), ",", signif(Raw_Correlation,digits=2), ")"), 
+        hoverinfo = 'text') %>%
+  layout(
+    title = "Proteinwise Pearson Correlation Coefficient",
+    xaxis = list(title = "rho based on QCed Data"),
+    yaxis = list(title = "rho based on Raw Data"),
+    legend = list(title = list(text = "Abundance Block"))
+  )
+
+avoidMess <- scatterHist(spearmanCor[common_Pro_Raw_QCed], spearmanCor_Raw[common_Pro_Raw_QCed], "Spearman Correlatoin for Protein", "QCed Data", "Raw Data")
+
+avoidMess <- scatterHist(kendallCor[common_Pro_Raw_QCed], kendallCor_Raw[common_Pro_Raw_QCed], "Kendall Correlatoin for Protein", "QCed Data", "Raw Data")
+
+JS_divergence <- getIndividualJS(commonPro, DEL_Sample_Keep,NON_Sample_Keep, "Protein")
+hist(JS_divergence, breaks=100, main="Histogram of JS_divergence for\nQCed Proteins", cex.main=0.8)
+
+```
+
+## Samples{.tabset}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+### Check the correlation of the same protein (correlation coefficient) between datasets
+pearsonCor_samp <- getIndividualRelation(DEL_Sample_Keep, NON_Sample_Keep, "Sample", "pearson")
+spearmanCor_samp <- getIndividualRelation(DEL_Sample_Keep, NON_Sample_Keep, "Sample", "spearman") 
+kendallCor_samp <- getIndividualRelation(DEL_Sample_Keep, NON_Sample_Keep, "Sample", "kendall") 
+
+pearsonCor_samp_Raw <- getIndividualRelation(DEL_Sample_Raw, NON_Sample_Raw, "Sample", "pearson")
+spearmanCor_samp_Raw <- getIndividualRelation(DEL_Sample_Raw, NON_Sample_Raw, "Sample", "spearman") 
+kendallCor_samp_Raw <- getIndividualRelation(DEL_Sample_Raw, NON_Sample_Raw, "Sample", "kendall") 
+
+common_Samp_Raw_QCed <- intersect(names(pearsonCor_samp), names(pearsonCor_samp_Raw))
+
+rho_Samp_Frame <- data.frame(
+  QCed_Correlation = pearsonCor_samp[common_Samp_Raw_QCed],
+  Raw_Correlation = pearsonCor_samp_Raw[common_Samp_Raw_QCed],
+  Observation = common_Samp_Raw_QCed
+)
+
+# Generate interactive plot
+plot_ly(rho_Samp_Frame, x = ~QCed_Correlation, y = ~Raw_Correlation, type = 'scatter', mode = 'markers', 
+        text = ~Observation, hoverinfo = 'text') %>%
+  layout(
+    title = "Samplewise Pearson Correlation Coefficient",
+    xaxis = list(title = "rho based on QCed Data"),
+    yaxis = list(title = "rho based on Raw Data")
+  )
+
+avoidMess <- scatterHist(pearsonCor_samp[common_Samp_Raw_QCed], pearsonCor_samp_Raw[common_Samp_Raw_QCed], "Pearson Correlatoin for Sample", "QCed Data", "Raw Data")
+
+avoidMess <- scatterHist(spearmanCor_samp[common_Samp_Raw_QCed], spearmanCor_samp_Raw[common_Samp_Raw_QCed], "Spearman Correlatoin for Sample", "QCed Data", "Raw Data")
+
+avoidMess <- scatterHist(kendallCor_samp[common_Samp_Raw_QCed], kendallCor_samp_Raw[common_Samp_Raw_QCed], "Kendall Correlatoin for Sample", "QCed Data", "Raw Data")
+
+```
+
+
+## Protein Pearson Corrleation between Two Datsets at Different Normalisation Stages{.tabset}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+fileList <- grep("csv",list.files("/home/rstudio/YD/MS/intermediate/BEADdel/SAMPLE/", pattern = "ProDat_"), value = TRUE)
+
+par(mfrow=c(3,4))
+for(whichFile in fileList){
+  if(grepl("DAE|VAE|noGaussian",whichFile)){
+    DEL_Sample_DiffNorm <-  read.csv(paste0("/home/rstudio/YD/MS/intermediate/BEADdel/SAMPLE/", whichFile), sep=",", row.names = 1)
+    NON_Sample_DiffNorm <- read.csv(paste0("/home/rstudio/YD/MS/intermediate/NONdel/SAMPLE/", whichFile), sep=",", row.names = 1)
+  }else{
+    DEL_Sample_DiffNorm <-  read.table(paste0("/home/rstudio/YD/MS/intermediate/BEADdel/SAMPLE/", whichFile))
+    NON_Sample_DiffNorm <- read.table(paste0("/home/rstudio/YD/MS/intermediate/NONdel/SAMPLE/", whichFile))
+  }
+  
+  pearsonCor_DiffNorm <- getIndividualRelation(DEL_Sample_DiffNorm, NON_Sample_DiffNorm, "Protein", "pearson")
+  hist(pearsonCor_DiffNorm, main=sub(".csv", "", whichFile), xlab="rho",breaks=100) 
+}
+```
+
+## Sample Pearson Corrleation between Two Datsets at Different Normalisation Stages{.tabset}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+fileList <- grep("csv",list.files("/home/rstudio/YD/MS/intermediate/BEADdel/SAMPLE/", pattern = "ProDat_"), value = TRUE)
+
+par(mfrow=c(3,4))
+for(whichFile in fileList){
+  if(grepl("DAE|VAE|noGaussian",whichFile)){
+    DEL_Sample_DiffNorm <-  read.csv(paste0("/home/rstudio/YD/MS/intermediate/BEADdel/SAMPLE/", whichFile), sep=",", row.names = 1)
+    NON_Sample_DiffNorm <- read.csv(paste0("/home/rstudio/YD/MS/intermediate/NONdel/SAMPLE/", whichFile), sep=",", row.names = 1)
+  }else{
+    DEL_Sample_DiffNorm <-  read.table(paste0("/home/rstudio/YD/MS/intermediate/BEADdel/SAMPLE/", whichFile))
+    NON_Sample_DiffNorm <- read.table(paste0("/home/rstudio/YD/MS/intermediate/NONdel/SAMPLE/", whichFile))
+  }
+  
+  pearsonCor_DiffNorm <- getIndividualRelation(DEL_Sample_DiffNorm, NON_Sample_DiffNorm, "Sample", "pearson")
+  hist(pearsonCor_DiffNorm, main=sub(".csv", "", whichFile), xlab="rho",breaks=100) 
+}
+```
+
+# Global Data Structure{.tabset}
+## Overlap of Samples on UMAP{.tabset}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+# Compute two UMAP embeddings (e.g., with different parameters)
+umap_1 <- umap(DEL_Sample_Keep)
+umap_2 <- umap(NON_Sample_Keep)
+
+# Convert the UMAP results to data frames for easier manipulation
+umap_1_df <- data.frame(umap_1$layout)
+umap_2_df <- data.frame(umap_2$layout)
+
+# Add observation names (assuming row names or some unique identifiers)
+umap_1_df %<>% mutate("Observation" = commonSamp)
+umap_2_df %<>% mutate("Observation" = commonSamp)
+colnames(umap_1_df)[c(1,2)] <- colnames(umap_2_df)[c(1,2)]  <- c("x","y")
+
+i=10
+j=100
+Samp1 <- commonSamp[i]
+Samp2 <- commonSamp[j]
+
+# Plot using plotly
+fig_UMAP_overlay <- plot_ly() %>%
+  add_trace(
+    x = umap_1_df$x, y = umap_1_df$y, type = 'scatter', mode = 'markers',
+    marker = list(color = 'cyan', size = 4),
+    text = umap_1_df$Observation, hoverinfo = 'text',
+    name = 'UMAP based on DEL'
+  ) %>%
+  add_trace(
+    x = umap_2_df$x, y = umap_2_df$y, type = 'scatter', mode = 'markers',
+    marker = list(color = 'pink', size = 4),
+    text = umap_2_df$Observation, hoverinfo = 'text',
+    name = 'UMAP based on NON'
+  ) %>%
+  add_annotations(
+    x = umap_1_df[Samp1,1], y = umap_1_df[Samp1,2],
+    ax = umap_1_df[Samp2,1], ay = umap_1_df[Samp2,2],
+    xref = "x", yref = "y", axref = "x", ayref = "y",
+    text = "two samples in DEL", showarrow = TRUE,
+    arrowcolor = "darkgreen"
+  ) %>%
+  add_annotations(
+    x = umap_2_df[Samp1,1], y = umap_2_df[Samp1,2],
+    ax = umap_2_df[Samp2,1], ay = umap_2_df[Samp2,2],
+    xref = "x", yref = "y", axref = "x", ayref = "y",
+    text = "two samples in NON", showarrow = TRUE,
+    arrowcolor = "royalblue"
+  ) %>%
+  layout(
+    title = 'Overlayed UMAP Plots',
+    xaxis = list(title = 'Dimension 1'),
+    yaxis = list(title = 'Dimension 2'),
+    showlegend = TRUE,
+    legend = list(
+      orientation = "h",   # Horizontal legend
+      x = 0.5,             # Centered horizontally
+      y = -0.2,            # Positioned below the plot
+      xanchor = "center",
+      yanchor = "top"
+    )
+  )
+
+fig_UMAP_overlay
+```
+
+## Spectral Analysis based on PCA{.tabset}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+PCA_DEL <- prcomp(DEL_Sample_Keep, scale = FALSE)
+PCA_NON <- prcomp(NON_Sample_Keep, scale = FALSE)
+
+Eigen_DEL <- get_eigenvalue(PCA_DEL)$eigenvalue
+Eigen_NON <- get_eigenvalue(PCA_NON)$eigenvalue
+# Spectral Distance
+plot(Eigen_DEL,Eigen_NON, main="Eigen Values of PCA based on Two Data Sets")
+```
+
+## Sample Median with PC1{.tabset}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+sampMedian_DEL <- apply(DEL_Sample_Keep, 1, median) 
+sampMedian_NON <- apply(NON_Sample_Keep, 1, median) 
+
+plot(PCA_DEL$x[,1], sampMedian_DEL, xlab = "PC1", ylab = "Sample Median", main=paste0("PC1 and Sample Median DEL Data\nCorrelation Coefficient: ", signif(cor(PCA_DEL$x[,1],sampMedian_DEL), digits=3)))
+plot(PCA_NON$x[,1], sampMedian_NON, xlab = "PC1", ylab = "Sample Median", main=paste0("PC1 and Sample Median NON Data\nCorrelation Coefficient: ", signif(cor(PCA_NON$x[,1],sampMedian_NON), digits=3)))
+```
+
+## Network based Comparison{.tabset}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+adjM_DEL <- cor(DEL_Sample_Keep,use = "complete.obs", method = "pearson")
+adjM_NON <- cor(NON_Sample_Keep,use = "complete.obs", method = "pearson")
+adjM_diff <- adjM_DEL - adjM_NON
+hist(adjM_diff, breaks=100)
+
+degNODE_DEL <- apply(adjM_DEL,2,mean)
+degNODE_NON <-  apply(adjM_NON,2,mean)
+plot(degNODE_DEL,degNODE_NON,main="Connectivity of Node based on adjM")
+
+cosM_DEL <- cosine(as.matrix(DEL_Sample_Keep))
+cosM_NON <- cosine(as.matrix(NON_Sample_Keep))
+cosM_diff <- cosM_DEL - cosM_NON
+hist(cosM_diff, breaks=100)
+
+degNODE_DEL <- apply(cosM_DEL,2,mean)
+degNODE_NON <-  apply(cosM_NON,2,mean)
+plot(degNODE_DEL,degNODE_NON, xlab = "DEL Data", ylab= "NON Data", main="Connectivity of Node based on cosM")
+```
+
+# Artificial Dataset as Reference{.tabset}
+## Proteins{.tabset}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+truth_mean <- apply(NON_Sample_Keep, 2, mean)
+truth_sd <- apply(NON_Sample_Keep, 2, sd)
+rand_NON <- matrix(NA, nrow=nrow(NON_Sample_Keep), ncol=ncol(NON_Sample_Keep))
+rownames(rand_NON) <- rownames(NON_Sample_Keep)
+colnames(rand_NON) <- colnames(NON_Sample_Keep)
+for(j in 1:ncol(rand_NON)){
+  rand_NON[,j] <- rnorm(nrow(NON_Sample_Keep), truth_mean[j], truth_sd[j])
+}
+
+pearsonCor_Rand <- getIndividualRelation(DEL_Sample_Keep, rand_NON, "Protein", "pearson")
+spearmanCor_Rand <- getIndividualRelation(DEL_Sample_Keep, rand_NON, "Protein", "spearman") 
+kendallCor_Rand <- getIndividualRelation(DEL_Sample_Keep, rand_NON, "Protein", "kendall") 
+#JS_divergence_Rand <- getIndividualJS(DEL_Sample_Keep,rand_NON, "Protein")
+plotCompHist(pearsonCor,pearsonCor_Rand,"Pearson Correlation for Proteins")
+plotCompHist(spearmanCor,spearmanCor_Rand,"Spearman Correlation for Proteins")
+plotCompHist(kendallCor,kendallCor_Rand,"Kendall Correlation for Proteins")
+```
+
+## Samples{.tabset}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+pearsonCor_samp_Rand <- getIndividualRelation(DEL_Sample_Keep, rand_NON, "Sample", "pearson")
+spearmanCor_samp_Rand <- getIndividualRelation(DEL_Sample_Keep, rand_NON, "Sample", "spearman") 
+kendallCor_samp_Rand <- getIndividualRelation(DEL_Sample_Keep, rand_NON, "Sample", "kendall") 
+#JS_divergence_samp_Rand <- getIndividualJS(DEL_Sample_Keep, rand_NON, "Sample")
+
+plotCompHist(pearsonCor_samp,pearsonCor_samp_Rand,"Pearson Correlation")
+plotCompHist(spearmanCor_samp,spearmanCor_samp_Rand,"Spearman Correlation")
+plotCompHist(kendallCor_samp,kendallCor_samp_Rand,"Kendall Correlation")
+```
