@@ -4,6 +4,10 @@ library(readxl)
 library(fgsea)
 library(data.table)
 library(MASS)
+library(lme4)
+library(nnet)
+library(MASS)
+library(ordinal)
 
 inputPath <- "/home/rstudio/workspace/Data Collection/"
 intermediatePath <- "/home/rstudio/workspace/Data Collection/intermediate/"
@@ -67,6 +71,9 @@ Clinic_MetaF_All %<>%
     ALSFRSR_RATE = log(ALSFRSR_RATE),
     ECAS_SCORE = boxcoxTranform(ECAS_SCORE, 134),
     
+    # SubjectID for random effect regression
+    SubjectID_Random = CSF_OLINK_MANIFEST,
+    
     # Factor conversions
     GROUP = factor(GROUP),
     ALSvsHC = factor(ALSvsHC),
@@ -77,7 +84,8 @@ Clinic_MetaF_All %<>%
     PATHOGENIC_VARIANT = factor(PATHOGENIC_VARIANT),
     COHORT = factor(COHORT),
     BULBARvSpinal = factor(BULBARvSpinal),
-    C9vsNonC9 = factor(C9vsNonC9)
+    C9vsNonC9 = factor(C9vsNonC9),
+    SubjectID_Random = factor(SubjectID_Random)
   )
 
 Clinic_MetaF <- Clinic_MetaF_All %>% filter(LONGITUDINAL_ENCOUNTER_NUMBER == 1) 
@@ -485,8 +493,10 @@ DCvsHC_SigPro_List <- unique(c(sig_BEADdel[["DCvsHC"]], sig_NONdel[["DCvsHC"]], 
 # SANITY CHECK FOR ALSvsHC
 ###########################
 ###########################
+#-------
+# Limma 
+#-------
 
-### 1. Limma 
 library(limma)
 library(edgeR)   
 
@@ -522,11 +532,9 @@ head(results)
 
 DEGs <- subset(results, adj.P.Val < 0.05)
 
-limma_DE <- rownames(DEGs)
+ALSvsHC_limma_DE <- rownames(DEGs)
 
-Olink_DE <- sig_Olink$ALSvsHC
-
-common_DE <- intersect(limma_DE, Olink_DE)
+ALSvsHC_Olink_DE <- sig_Olink$ALSvsHC
 
 library(VennDiagram)
 
@@ -580,29 +588,45 @@ DEGs <- subset(results, adj.P.Val < 0.05)
 
 limma_DE <- rownames(DEGs)
 
-Olink_DE <- sig_Olink$ALSvsHC
-
-common_DE <- intersect(limma_DE, Olink_DE)
-
-library(VennDiagram)
-
-venn.plot <- draw.pairwise.venn(
-  area1 = length(limma_DE),
-  area2 = length(Olink_DE),
-  cross.area = length(common_DE),
-  category = c("limma DE", "Olink DE"),
-  fill = c("skyblue", "pink"),
-  alpha = 0.5,
-  lty = 1,
-  cex = 1.5,
-  cat.cex = 1.5,
-  cat.pos = c(-20, 20)
+# ---------------------
+# Logistic Regression
+# ---------------------
+### Merge the clinical meta and proteomic data
+commonID1 <- intersect(rownames(MS_BEADdel_ProF), rownames(Clinic_MetaF_All))
+MS_BEADdel_merged_All <- cbind(
+  MS_BEADdel_ProF[commonID1, , drop=FALSE],
+  Clinic_MetaF_All[commonID1, , drop=FALSE]
 )
+MS_BEADdel_ProF_matchClinic_All <- MS_BEADdel_ProF[commonID1, , drop = FALSE]
 
-grid.newpage()
-grid.draw(venn.plot)
+commonID2 <- intersect(rownames(MS_NONdel_ProF), rownames(Clinic_MetaF_All))
+MS_NONdel_merged_All <- cbind(
+  MS_NONdel_ProF[commonID2, , drop = FALSE],
+  Clinic_MetaF_All[commonID2, , drop = FALSE]
+)
+MS_NONdel_ProF_matchClinic_All <- MS_NONdel_ProF[commonID2, , drop = FALSE]
 
-### 2. All proteins together in Limma 
+commonID3 <- intersect(rownames(Olink_ProF), rownames(Clinic_MetaF_All))
+Olink_merged_All <- cbind(
+  Olink_ProF[commonID3, , drop = FALSE],
+  Clinic_MetaF_All[commonID3, , drop = FALSE]
+)
+Olink_ProF_matchClinic_All <- Olink_ProF[commonID3, ,drop = FALSE]
+
+### baseline sample only
+ALSvsHC_Olink_result_tbl_adj_v1_GML <- get_DE_Pvalue_Table_GLM(Olink_ProF_matchClinic, Olink_merged, varList2, outPath, "Olink", "logistic", "ALSvsHC", FALSE)
+ALSvsHC_Olink_logisticReg_v1_DE <- rownames(ALSvsHC_Olink_result_tbl_adj_v1_GML)[which(ALSvsHC_Olink_result_tbl_adj_v1_GML < 0.05)]
+
+ALSvsHC_MS_BEADdel_result_tbl_adj_v1_GML <- get_DE_Pvalue_Table_GLM(MS_BEADdel_ProF_matchClinic, MS_BEADdel_merged, varList2, outPath, "MS_BEADdel", "logistic", "ALSvsHC", FALSE)
+ALSvsHC_MS_BEADdel_logisticReg_v1_DE <- rownames(ALSvsHC_MS_BEADdel_result_tbl_adj_v1_GML)[which(ALSvsHC_MS_BEADdel_result_tbl_adj_v1_GML < 0.05)]
+
+DCvsHC_Olink_result_tbl_adj_v1_GML <- get_DE_Pvalue_Table_GLM(Olink_ProF_matchClinic, Olink_merged, varList2, outPath, "Olink", "logistic", "DCvsHC", FALSE)
+DCvsHC_Olink_logisticReg_v1_DE <- rownames(DCvsHC_Olink_result_tbl_adj_v1_GML)[which(DCvsHC_Olink_result_tbl_adj_v1_GML<0.05)]
+
+### all samples
+ALSvsHC_result_tbl_adj_v1_GML <- get_DE_Pvalue_Table_GLM(Olink_ProF_matchClinic, Olink_merged, varList2, outPath, "Olink", "logistic", "ALSvsHC", FALSE)
+ALSvsHC_logisticReg_DE <- rownames(ALSvsHC_result_tbl_adj_v1_GML)[which(ALSvsHC_result_tbl_adj_v1_GML < 0.05)]
+
 
 # ------------
 # Volcano Plot
