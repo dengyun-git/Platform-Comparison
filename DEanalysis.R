@@ -9,6 +9,8 @@ inputPath <- "/home/rstudio/workspace/Data Collection/"
 intermediatePath <- "/home/rstudio/workspace/Data Collection/intermediate/"
 outPath <- "/home/rstudio/workspace/Data Collection/output/"
 
+source("/home/rstudio/repos/Comp_Dataset_Call.R")
+
 ### Read in Data
 MS_BEADdel_ProF <- read.csv("/home/rstudio/workspace/Data Collection/QCed/MS/BEADdel/ProDat_QCed.csv", row.names = 1)
 DEL_ProMap <- read_excel("/home/rstudio/workspace/Data Collection/QCed/MS/BEADdel/BEADdepletions_ProteinMapping.xlsx") %>% as.data.frame()
@@ -20,16 +22,31 @@ colnames(MS_NONdel_ProF) <- sapply(colnames(MS_NONdel_ProF), function(x){NON_Pro
 
 Olink_ProF <- read.csv("/home/rstudio/workspace/Data Collection/QCed/Olink/CSF/CSF_Customised_ProDataClean.csv", row.names = 1)
 
-Clinic_MetaF <- read.csv("/home/rstudio/workspace/Data Collection/DA76/da76-wb-fleeting-cabbage-4050/Data/20251025_als_clinical_with_ambrosia_data_pseudonymized_FINAL.csv") %>% filter(CSF_OLINK_MANIFEST != "")
-rownames(Clinic_MetaF) <- Clinic_MetaF$CSF_OLINK_MANIFEST
+Clinic_MetaF_All <- read.csv("/home/rstudio/workspace/Data Collection/DA76/da76-wb-fleeting-cabbage-4050/Data/20251025_als_clinical_with_ambrosia_data_pseudonymized_FINAL.csv") %>% filter(CSF_OLINK_MANIFEST != "")
+rownames(Clinic_MetaF_All) <- Clinic_MetaF_All$CSF_OLINK_MANIFEST
 
-Clinic_MetaF %<>%
+# Only the base line samples will be considered in Clinic_MetaF
+Clinic_MetaF_All %<>% 
   mutate(
     # C9 vs Non-C9 classification
     C9vsNonC9 = ifelse(
       PATHOGENIC_VARIANT %in% c("KIF5A", "MAPT", "SBMA", "SOD1", "SPG7", "TBK1"),
       "NEGATIVE",
       PATHOGENIC_VARIANT
+    ),
+    
+    # ALS vs HC
+    ALSvsHC = ifelse(
+      GROUP %in% c("AMYOTROPHIC LATERAL SCLEROSIS", "HEALTHY CONTROL"),
+      GROUP,
+      NA
+    ),
+    
+    # ALS vs DC
+    ALSvsDC = ifelse(
+      GROUP %in% c("AMYOTROPHIC LATERAL SCLEROSIS", "DISEASE CONTROL"),
+      GROUP,
+      NA
     ),
     
     # BULBAR vs SPINAL classification
@@ -45,6 +62,7 @@ Clinic_MetaF %<>%
     
     # Factor conversions
     GROUP = factor(GROUP),
+    ALSvsHC = factor(ALSvsHC),
     GENDER = factor(GENDER),
     WEAKNESS_SITE = factor(WEAKNESS_SITE),
     PATHOGENIC_VARIANT = factor(PATHOGENIC_VARIANT),
@@ -53,6 +71,8 @@ Clinic_MetaF %<>%
     C9vsNonC9 = factor(C9vsNonC9)
   )
 
+Clinic_MetaF <- Clinic_MetaF_All %>% filter(LONGITUDINAL_ENCOUNTER_NUMBER == 1) 
+
 ### Merge the clinical meta and proteomic data
 commonID1 <- intersect(rownames(MS_BEADdel_ProF), rownames(Clinic_MetaF))
 MS_BEADdel_merged <- cbind(MS_BEADdel_ProF[commonID1,], Clinic_MetaF[commonID1,]) 
@@ -60,10 +80,8 @@ MS_BEADdel_merged <- cbind(MS_BEADdel_ProF[commonID1,], Clinic_MetaF[commonID1,]
 commonID2 <- intersect(rownames(MS_NONdel_ProF), rownames(Clinic_MetaF))
 MS_NONdel_merged <- cbind(MS_NONdel_ProF[commonID2,], Clinic_MetaF[commonID2,])
 
-Olink_merged <- Olink_ProF %>%
-  rownames_to_column("ID") %>%
-  left_join(Clinic_MetaF %>% rownames_to_column("ID"), by = "ID") %>%
-  column_to_rownames("ID") 
+commonID3 <- intersect(rownames(Olink_ProF), rownames(Clinic_MetaF))
+Olink_merged <- cbind(Olink_ProF[commonID3,], Clinic_MetaF[commonID3,])
 
 ########################
 ########################
@@ -129,7 +147,6 @@ for (i in 1:length(pathBase)){
   makeBubble(intermediatePath, pathBase[i], 5, 5, files[i])
 }
 
-
 individualAdjP_BEADdel_Olink_Samp <- getIndividualRelation(MS_BEADdel_ProF, Olink_ProF, "Sample", "spearman")
 individualAdjP_NONdel_Olink_Samp <- getIndividualRelation(MS_NONdel_ProF, Olink_ProF, "Sample", "spearman")
 individualAdjP_BEADdel_NONdel_Samp <- getIndividualRelation(MS_BEADdel_ProF, MS_NONdel_ProF, "Sample", "spearman")
@@ -144,11 +161,11 @@ corSamp_NONdel_Olink <- names(individualAdjP_NONdel_Olink_Samp)[which(abs(indivi
 corSamp_BEADdel_NONdel <- names(individualAdjP_BEADdel_NONdel_Samp)[which(abs(individualAdjP_BEADdel_NONdel_Samp)>0.7)]
 
 # Compare with global, whether there is something important for the sample characteristics
-CorSampReport <- Clinic_MetaF[corSamp_BEADdel_NONdel,]
+CorSampReport <- Clinic_MetaF_All[corSamp_BEADdel_NONdel,]
 
 # Define variables
-categorical_vars <- c("BULBARvSpinal", "C9vsNonC9", "GENDER", "COHORT")
-numeric_vars     <- c("AGE_AT_SYMPTOM_ONSET", "BODY_MASS_INDEX", "ALSFRSR_RATE", "ECAS_SCORE")
+categorical_vars <- c("ALSvsHC", "ALSvsDC", "BULBARvSpinal", "C9vsNonC9", "GENDER", "COHORT")
+numeric_vars     <- c("AGE_AT_SYMPTOM_ONSET", "AGE_AT_SAMPLING", "BODY_MASS_INDEX", "ALSFRSR_RATE", "ECAS_SCORE")
 
 all_vars <- c(categorical_vars, numeric_vars)
 
@@ -157,13 +174,30 @@ CorSamp_vs_AllSamp <- setNames(rep(NA, length(all_vars)), all_vars)
 
 # Compare categorical variables using Fisher's Exact Test
 for(var in categorical_vars){
-  testF <- fisher.test(table(CorSampReport[,var]), table(Clinic_MetaF[,var]))
+  CorSampVar <- CorSampReport %>% 
+    filter(!is.na(var)) %>% 
+    pull(var)
+  
+  CorSampAll <- Clinic_MetaF %>%
+    filter(!is.na(var)) %>% 
+    pull(var)
+  
+  AllSampVar <- Clinic_MetaF[,var]
+  testF <- fisher.test(table(CorSampVar), table(CorSampAll))
   CorSamp_vs_AllSamp[var] <- testF$p.value
 }
 
 # Compare numeric variables using Wilcoxon rank-sum test (non-parametric)
 for(var in numeric_vars){
-  testKS <- ks.test(table(CorSampReport[,var]), table(Clinic_MetaF[,var]))
+  CorSampVar <- CorSampReport %>% 
+    filter(!is.na(var)) %>% 
+    pull(var)
+  
+  CorSampAll <- Clinic_MetaF %>%
+    filter(!is.na(var)) %>% 
+    pull(var)
+  
+  testKS <- ks.test(table(CorSampVar), table(CorSampAll))
   CorSamp_vs_AllSamp[var] <- testKS$p.value
 }
 
@@ -214,58 +248,21 @@ dev.off()
 # DE Between Platforms
 #######################
 #######################
-varList1 = c("BULBARvSpinal", "C9vsNonC9", "BODY_MASS_INDEX", "ALSFRSR_FINE_MOTOR", "ALSFRSR_GROSS_MOTOR", "ALSFRSR_RATE", "ECAS_SCORE")
-varList2 = c("AGE_AT_SYMPTOM_ONSET","GENDER", "COHORT")
+# --------------------------
+# Generate DE P value Table
+# --------------------------
+varList1 = c("ALSvsHC", "ALSvsDC", "BULBARvSpinal", "C9vsNonC9", "BODY_MASS_INDEX", "ALSFRSR_FINE_MOTOR", "ALSFRSR_GROSS_MOTOR", "ALSFRSR_RATE", "ECAS_SCORE")
+varList2 = c("AGE_AT_SYMPTOM_ONSET", "AGE_AT_SAMPLING","GENDER", "COHORT")
 varList = c(varList1,varList2)
 
 ### check whether the categorical variables are set as factor
-for(id in c(1,2,9,10)){
+for(id in c(1,2,3,4, 12,13)){
   print(class(Clinic_MetaF[,varList[id]]))
 } 
 
-result_tbl_adj_BEADdel <- get_DE_Pvalue_Table(MS_BEADdel_ProF, MS_BEADdel_merged, c("AGE_AT_SYMPTOM_ONSET", "GENDER"), "/home/rstudio/workspace/Data Collection/output/", "BEADdel")
-result_tbl_adj_NONdel <- get_DE_Pvalue_Table(MS_NONdel_ProF, MS_NONdel_merged, c("AGE_AT_SYMPTOM_ONSET", "GENDER"), "/home/rstudio/workspace/Data Collection/output/", "NONdel")
-result_tbl_adj_Olink <- get_DE_Pvalue_Table(Olink_ProF, Olink_merged, c("AGE_AT_SYMPTOM_ONSET", "GENDER"), "/home/rstudio/workspace/Data Collection/output/", "Olink")
-
-get_DE_Pvalue_Table <- function(ProExpF, Merged, covariates, outPath, whichPlatform){
-  # --- Initialize results container --
-  result_tbl_adj <- result_tbl <- matrix(NA, nrow=ncol(ProExpF), ncol=length(varList1))
-  rownames(result_tbl_adj) <- rownames(result_tbl) <- colnames(ProExpF)
-  colnames(result_tbl_adj) <- colnames(result_tbl) <- varList1
-  
-  # --- Loop over main predictors ---
-  for(mainVar in varList1){
-    
-    cat("Running regression for predictor:", mainVar, "\n")
-    
-    # remove NA
-    keepID <- which(!(is.na(Merged[, mainVar]) | Merged[, mainVar]=="" | is.null(Merged[, mainVar])))
-    Merged_Here <- Merged[keepID, ]
-    
-    # Loop over proteins
-    for(i in colnames(ProExpF)){
-      ProS <- Merged_Here[,i]
-      
-      # Build formula: y ~ mainVar + covariates
-      formula_str1 <- paste("ProS ~", paste(c(mainVar, covariates), collapse = " + "))
-      formula_str2 <- paste("ProS ~", paste(covariates, collapse = " + "))
-      
-      fit1 <- lm(as.formula(formula_str1), data = Merged_Here)
-      fit2 <- lm(as.formula(formula_str2), data = Merged_Here)
-      ANOVAobj <- anova(fit1,fit2)
-      
-      # Extract coefficient for main predictor
-      result_tbl[i,mainVar] <- ANOVAobj$`Pr(>F)`[2]
-    }
-    result_tbl_adj[,mainVar] <- p.adjust(result_tbl[,mainVar], method = "BH")
-  }
-  
-  # Adjust p-values for multiple testing (optional)
-  write.csv(result_tbl_adj, paste0(outPath, whichPlatform, "_result_tbl.csv"))
-  write.csv(result_tbl_adj, paste0(outPath, whichPlatform, "_result_tbl_adj.csv"))
-  
-  return(result_tbl_adj)
-}
+result_tbl_adj_BEADdel <- get_DE_Pvalue_Table(MS_BEADdel_ProF, MS_BEADdel_merged, varList2, "/home/rstudio/workspace/Data Collection/output/", "BEADdel", varList1)
+result_tbl_adj_NONdel <- get_DE_Pvalue_Table(MS_NONdel_ProF, MS_NONdel_merged, varList2, "/home/rstudio/workspace/Data Collection/output/", "NONdel", varList1)
+result_tbl_adj_Olink <- get_DE_Pvalue_Table(Olink_ProF, Olink_merged, varList2, "/home/rstudio/workspace/Data Collection/output/", "Olink", varList1)
 
 # Extract the common significantly expressed proteins
 # Significance threshold
@@ -280,252 +277,151 @@ for(var in varList1){
 }
 save(sig_BEADdel, sig_NONdel, sig_Olink, file=paste0(outPath, "sig.rdat"))
 
-# BEADdel vs NONdel
-overlap_BEADdel_NONdel <- intersect(sig_BEADdel, sig_NONdel)
-
-# BEADdel vs Olink
-overlap_BEADdel_Olink <- intersect(sig_BEADdel, sig_Olink)
-
-# NONdel vs Olink
-overlap_NONdel_Olink <- intersect(sig_NONdel, sig_Olink)
-
-overlap_all3 <- Reduce(intersect, list(sig_BEADdel, sig_NONdel, sig_Olink))
-
-data.frame(
-  Comparison = c("BEADdel vs NONdel", "BEADdel vs Olink", "NONdel vs Olink", "All three"),
-  nProteins = c(length(overlap_BEADdel_NONdel),
-                length(overlap_BEADdel_Olink),
-                length(overlap_NONdel_Olink),
-                length(overlap_all3))
+# Construct a table, rows as clinical variables, columns as three platforms, entries are significant proteins
+SigProSummary <- data.frame(
+  ClinicalVar = varList1,
+  BEADdel = sapply(varList1, function(v) paste(sig_BEADdel[[v]], collapse = "/")),
+  NONdel  = sapply(varList1, function(v) paste(sig_NONdel [[v]], collapse = "/")),
+  Olink   = sapply(varList1, function(v) paste(sig_Olink  [[v]], collapse = "/")),
+  stringsAsFactors = FALSE
 )
 
-write.csv(data.frame)
+write.csv(SigProSummary, file = paste0(outPath, "SigProSummary.csv"), row.names = FALSE)
 
-# for (confounder in confList){
-#   
-#   ClinicFrameHere <- ClinicFrame[!is.na(ClinicFrame[,confounder]),]
-#   
-#   if(confounder %in% confList1){
-#     f1 <- as.formula(EndoLabel~1)
-#     f2 <- as.formula(paste("EndoLabel~",confounder))
-#   }else{
-#     f1 <- as.formula(EndoLabel~cohort_name)
-#     f2 <- as.formula(paste("EndoLabel~cohort_name+",confounder))
-#   }
-#   
-#   ### tackle with the different cases of endotype numbers
-#   if(length(unique(ClinicFrameHere$EndoLabel))==2){
-#     fit1 <- glm(f1,data=ClinicFrameHere,family = binomial(link = "logit"))
-#     fit2 <- glm(f2,data=ClinicFrameHere,family = binomial(link = "logit"))
-#     ANOVAobj <- anova(fit1,fit2)
-#     pContainer[confounder,1] = pchisq(ANOVAobj$Deviance[nrow(ANOVAobj)], df=ANOVAobj$Df[nrow(ANOVAobj)],lower.tail=FALSE)
-#   }else{
-#     fit1 <- nnet::multinom(f1,data=ClinicFrameHere)
-#     fit2 <- nnet::multinom(f2,data=ClinicFrameHere)
-#     ANOVAobj <- anova(fit1,fit2)
-#     pContainer[confounder,1]= ANOVAobj$`Pr(Chi)`[nrow(ANOVAobj)]
-#   } 
-#   
-#   if(confounder == "sf_iknee_proc_batch"){
-#     fit3 <- lmerTest::lmer(as.numeric(EndoLabel) ~ get(confounder) + (1|cohort_name), data=ClinicFrameHere)
-#     ANOVAobj <- anova(fit3)
-#     pContainer[confounder,1]=ANOVAobj$`Pr(>F)`
-#   }
-#   
-#   
-#   for(clinicInd in c(2,5,8,11,12,13,14,3,4,9,10)){
-#     clinic = clinics[clinicInd] ### define which clinic to explore this loop
-#     
-#     keepId <- which(!(is.na(CombinedFrameThis[,clinic]) | CombinedFrameThis[,clinic]=="NA")) 
-#     CombinedFrameHere <- CombinedFrameThis[keepId,] ### remove NA entries before regression
-#     
-#     ### categorical clinical features
-#     if(clinicInd %in% c(2,5,8,11,12,13,14)){
-#       CombinedFrameHere[,clinic] <- as.factor(CombinedFrameHere[,clinic])
-#       
-#       ### bar chart displaying clinical feature distribution within endotypes
-#       barDat = CombinedFrameHere[,c("EndoLabel",clinic)]
-#       compT <- table(barDat)/rowSums(table(barDat))
-#       addCol <- matrix(unlist(sapply(1:nrow(barDat),function(x){
-#         endo = as.character(barDat[x,"EndoLabel"])
-#         clin = as.character(barDat[x,clinic])
-#         compT[endo,clin]})),ncol=1)
-#       colnames(addCol) = "Composition"
-#       barDat <- cbind(barDat,addCol)
-#       
-#       if(length(unique(EndoLabel))==2){
-#         p1 <- ggplot(data = barDat) + geom_bar(aes(x=as.factor(get(clinic)),y=Composition,fill=as.factor(EndoLabel)),stat="identity",position=position_dodge()) +
-#           ggtitle(paste0(clinics[clinicInd]," comparision for endotypes")) + labs(x="",y="Composition",fill="Endotype") + scale_fill_manual(name = "Endotype", labels = HighLowIntensityLabel,values = HighLowIntensityColor) +
-#           theme(plot.title=element_text(size = 15,face="bold",hjust=0.5),legend.position="bottom",
-#                 axis.text.x = element_text(size=12,face="bold",angle = 45,hjust = 1),axis.title.x =element_text(size = 12,face="bold"),
-#                 legend.title = element_text(size = 13,face="bold"),legend.text = element_text(size = 12,face="bold"),
-#                 axis.text.y =element_text(size=13,face="bold"),axis.title.y =element_text(size=12,face="bold"))
-#       }else{ ### more than 2 endotypes
-#         p1 <- ggplot(data = barDat) + geom_bar(aes(x=as.factor(get(clinic)),y=Composition,fill=as.factor(EndoLabel)),stat="identity",position=position_dodge()) +
-#           ggtitle(paste0(clinics[clinicInd]," comparision for endotypes")) + labs(x="",y="Composition",fill="Endotype") + scale_fill_discrete(name = "Endotype") +
-#           theme(plot.title=element_text(size = 15,face="bold",hjust=0.5),legend.position="bottom",
-#                 axis.text.x = element_text(size=12,face="bold",angle = 45,hjust = 1),axis.title.x =element_text(size = 12,face="bold"),
-#                 legend.title = element_text(size = 13,face="bold"),legend.text = element_text(size = 12,face="bold"),
-#                 axis.text.y =element_text(size=13,face="bold"),axis.title.y =element_text(size=12,face="bold"))
-#       }     
-#       print(p1)
-#       
-#       ### an example plot of KL grade
-#       # p1 <- ggplot(data = barDat) + geom_bar(aes(x=as.factor(get(clinic)),y=Composition,fill=as.factor(EndoLabel)),stat="identity",position=position_dodge()) +
-#       #   ggtitle("Ordinal KL Grade Comparision for Endotypes") + labs(x="Ordinal KL grade", y="Composition",fill="endotype") + 
-#       #   scale_fill_discrete(name = "Endotype", labels = c("High Intensity Endotype", "Low Intensity Endotype")) +
-#       #   theme(plot.title=element_text(size = 15,face="bold",hjust=0.5),legend.position="bottom",
-#       #         axis.text.x = element_text(size=15,face="bold"),axis.title.x =element_text(size = 12,face="bold"),
-#       #         legend.title = element_text(size = 13,face="bold"),legend.text = element_text(size = 12,face="bold"),
-#       #         axis.text.y =element_text(size=13,face="bold"),axis.title.y =element_text(size=12,face="bold"))
-#       # print(p1)
-#       
-#       ### PCA plot, overlay with clinical features
-#       PCAoverlayDat <- cbind(barDat,PCs[keepId,])
-#       p1.1 <- ggplot(data=PCAoverlayDat) + geom_point(aes(x=PC1,y=PC2,color=as.factor(get(clinic)),shape=as.factor(EndoLabel))) +
-#         labs(shape="endotype",color=clinic) +
-#         theme(axis.text.x=element_blank(),axis.text.y=element_blank()) + ggtitle(paste0(clinics[clinicInd]," overlay on PCA"))
-#       print(p1.1)
-#       
-#       ### umap, overlap with clinical features
-#       df <- data.frame(x = umap[keepId,1],y =umap[keepId,2],barDat)
-#       colnames(df)[c(1,2)] = c("umap.D1","umap.D2")
-#       p1.2 <- ggplot(df, aes(x=umap.D1, y=umap.D2, color=as.factor(get(clinic)),shape=as.factor(EndoLabel))) + geom_point() + ggtitle(paste0(clinics[clinicInd]," overlay on umap")) + labs(color=clinics[clinicInd],shape="endotype") +
-#         labs(shape="endotype",color=clinic) +
-#         theme(plot.title=element_text(size=14,hjust=0.5),legend.text=element_text(size = 10), axis.title=element_text(size = 12))
-#       print(p1.2)
-#       
-#     }else{### continuous clinical features
-#       ### violin plot displaying clinical feature distribution within endotypes
-#       violinDat = CombinedFrameHere[,c("EndoLabel",clinic)]
-#       nn=length(unique(CombinedFrameHere$EndoLabel))
-#       
-#       if(length(unique(EndoLabel))==2){
-#         p2 <- ggplot(data=violinDat,aes(x=as.factor(EndoLabel),y=get(clinic),fill=as.factor(EndoLabel))) + geom_violin(width=1) + geom_boxplot(width=0.1, color="grey", alpha=0.5) +
-#           labs(title=(paste0(clinic," distribution for endotypes")),x="Endotype",fill="Endotype") + ylab("distribution") + scale_fill_manual(name = "Endotype", labels = HighLowIntensityLabel,values = HighLowIntensityColor) +
-#           theme(panel.grid.major.x = element_blank(),panel.grid.minor.x = element_blank(),axis.text.x = element_blank(),legend.position="bottom") +
-#           geom_vline(xintercept = 0.5:(nn+0.5),linetype="dotted")
-#       }else{
-#         p2 <- ggplot(data=violinDat,aes(x=as.factor(EndoLabel),y=get(clinic),fill=as.factor(EndoLabel))) + geom_violin(width=1) + geom_boxplot(width=0.1, color="grey", alpha=0.5) +
-#           labs(title=(paste0(clinic," distribution for endotypes")),x="Endotype",fill="Endotype") + ylab("distribution") + scale_fill_discrete(name = "Endotype") +
-#           theme(panel.grid.major.x = element_blank(),panel.grid.minor.x = element_blank(),axis.text.x = element_blank(),legend.position="bottom") +
-#           geom_vline(xintercept = 0.5:(nn+0.5),linetype="dotted") 
-#       }
-#       
-#       ### an example plot of womac pain
-#       # p2 <- ggplot(data=violinDat,aes(x=as.factor(EndoLabel),y=get(clinic),fill=as.factor(EndoLabel))) + geom_violin(width=1) + geom_boxplot(width=0.1, color="grey", alpha=0.5) +
-#       #   labs(title=(paste0("WOMAC pain score"," distribution for endotypes")),x="endotype",fill="endotype") + ylab("distribution") +
-#       #   scale_fill_discrete(name = "Endotype", labels = c("High Intensity Endotype", "Low Intensity Endotype")) +
-#       #   theme(plot.title=element_text(size = 15,face="bold",hjust=0.5),legend.position="bottom",
-#       #         panel.grid.major.x = element_blank(),panel.grid.minor.x = element_blank(),axis.text.x = element_blank(),
-#       #         axis.title.x =element_text(size = 12,face="bold"),
-#       #         legend.title = element_text(size = 13,face="bold"),legend.text = element_text(size = 12,face="bold"),
-#       #         axis.text.y =element_text(size=13,face="bold"),axis.title.y =element_text(size=12,face="bold")) +
-#       #   geom_vline(xintercept = 0.5:(nn+0.5),linetype="dotted")
-#       print(p2)
-#       
-#       PCAoverlayDat <- cbind(violinDat,PCs[keepId,])
-#       p2.1 <- ggplot(data=PCAoverlayDat) + geom_point(aes(x=PC1,y=PC2,color=get(clinic),shape=as.factor(EndoLabel))) +
-#         theme(axis.text.x=element_blank(),axis.text.y=element_blank()) + ggtitle(paste0(clinic," overlay on PCA")) +
-#         labs(color=clinic,shape="endotype")
-#       print(p2.1)
-#       
-#       ### umap, overlap with clinical features
-#       df <- data.frame(x = umap[keepId,1],y = umap[keepId,2],violinDat)
-#       p2.2 <- ggplot(df, aes(x=x, y=y, color=get(clinic),shape=as.factor(EndoLabel))) + geom_point() + ggtitle(paste0(clinic," overlay on umap")) +
-#         theme(plot.title=element_text(size=14,hjust=0.5),legend.text=element_text(size = 10), axis.title=element_text(size = 12),axis.text.x=element_blank(),axis.text.y=element_blank()) +
-#         labs(color=clinic,shape="endotype",x="Dimension1",y="Dimension2")
-#       print(p2.2)
-#     }
-#     
-#     f1 <- as.formula(EndoLabel~cohort_name)
-#     f2 <- as.formula(paste("EndoLabel~cohort_name+",clinic))
-#     # f1 <- as.formula(EndoLabel~cohort_name+totalProHere)
-#     # f2 <- as.formula(paste("EndoLabel~cohort_name+totalProHere+",clinic))
-#     
-#     ### tackle with different number of endotypes
-#     if(length(unique(CombinedFrameHere$EndoLabel))==2){
-#       CombinedFrameHere$EndoLabel <- as.factor(sapply(CombinedFrameHere$EndoLabel,function(x){if(x!=1){0}else{x}}))
-#       fit1 <- glm(f1,family = binomial(link = "logit"),data=CombinedFrameHere)
-#       fit2 <- glm(f2,family = binomial(link = "logit"),data=CombinedFrameHere)
-#       ANOVAobj <- anova(fit1,fit2)
-#       clinicP[clinic,1]= pchisq(ANOVAobj$Deviance[nrow(ANOVAobj)], df=ANOVAobj$Df[nrow(ANOVAobj)],lower.tail=FALSE)
-#     }else{
-#       CombinedFrameHere$EndoLabel <- as.factor(CombinedFrameHere$EndoLabel)
-#       fit1 <- nnet::multinom(f1,data=CombinedFrameHere)
-#       fit2 <- nnet::multinom(f2,data=CombinedFrameHere)
-#       ANOVAobj <- anova(fit1,fit2)
-#       clinicP[clinic,1]= ANOVAobj$`Pr(Chi)`[nrow(ANOVAobj)]
-#     }
-#   }
-#   
-#   clinicP2 <- cbind(clinicP,p.adjust(clinicP, method = "bonferroni"),p.adjust(clinicP, method = "BH"))
-#   colnames(clinicP2)[c(2,3)] <- c("padj.bonferroni","padj.BH")
-#   ### output the table: cilinic features vs p vlaues
-#   write.table(clinicP2,paste0(outF1,"/ClinicPvalues.txt"),row.names = TRUE,col.names=TRUE,quote=FALSE,sep="\t")
-# }  
+# Make scatter plot of protein expression between Olink and MS for ALS vs HC
+ALSvsHC_SigPro_List <- unique(c(sig_BEADdel[["ALSvsHC"]], sig_NONdel[["ALSvsHC"]], sig_Olink[["ALSvsHC"]]))
 
-# library(limma)
-# library(dplyr)
-# library(tibble)
-# 
-# # ---------------------------
-# # 1. Filter metadata for groups of interest
-# # ---------------------------
-# meta <- Olink_merged %>% 
-#   filter(GROUP %in% c("AMYOTROPHIC LATERAL SCLEROSIS", "HEALTHY CONTROL") & CSF_LONGITUDINAL_NUMBER == "1") %>% 
-#   mutate(
-#     ID = CSF_OLINK_MANIFEST,
-#     AGE_c = scale(as.numeric(AGE_AT_SYMPTOM_ONSET), center = TRUE, scale = FALSE), # centered age
-#     GENDER = factor(GENDER),
-#     GROUP = factor(GROUP)
-#   )
-# 
-# # ---------------------------
-# # 2. Check counts
-# # ---------------------------
-# table(meta$GROUP)
-# table(meta$GENDER)
-# 
-# # ---------------------------
-# # 3. Make sure expression matrix columns match metadata
-# # ---------------------------
-# expr <- as.matrix(Olink_ProF[meta$ID, ])
-# 
-# # ---------------------------
-# # 4. Build design matrix (~0 + GROUP)
-# # ---------------------------
-# design <- model.matrix(~0 + GROUP + AGE_c + GENDER, data = meta)
-# colnames(design) <- make.names(colnames(design))
-# dim(design)
-# 
-# # ---------------------------
-# # 5. Fit linear model
-# # ---------------------------
-# fit <- lmFit(expr, design)
-# 
-# # ---------------------------
-# # 6. Define contrast ALS vs Healthy Control
-# # ---------------------------
-# contrast.matrix <- makeContrasts(
-#   ALS_vs_Control = GROUPAMYOTROPHIC.LATERAL.SCLEROSIS - GROUPHEALTHY.CONTROL,
-#   levels = design
-# )
-# 
-# # ---------------------------
-# # 7. Apply contrast and empirical Bayes
-# # ---------------------------
-# fit2 <- contrasts.fit(fit, contrast.matrix)
-# fit2 <- eBayes(fit2)
-# 
-# # ---------------------------
-# # 8. Extract top differentially expressed proteins
-# # ---------------------------
-# results <- topTable(fit2, coef = "ALS_vs_Control", number = Inf)
-# head(results)
-# 
-# # ---------------------------
-# # 9. Filter significant DE proteins (optional)
-# # ---------------------------
-# DE <- subset(results, adj.P.Val < 0.05 & abs(logFC) > 1)
-# nrow(DE)
+ALSvsHC_SigPro_Exist_Platform <- matrix(NA, nrow = length(ALSvsHC_SigPro_List), ncol=3)
+rownames(ALSvsHC_SigPro_Exist_Platform) <- ALSvsHC_SigPro_List
+colnames(ALSvsHC_SigPro_Exist_Platform) <- c("Olink", "MS_BEADdel", "MS_NONdel")
+
+for(ProS in ALSvsHC_SigPro_List){ 
+  ALSvsHC_SigPro_Exist_Platform[ProS, "Olink"] <- ifelse(ProS %in% colnames(Olink_ProF), "Y", "N") 
+  ALSvsHC_SigPro_Exist_Platform[ProS, "MS_BEADdel"] <- ifelse(ProS %in% colnames(MS_BEADdel_ProF), "Y", "N") 
+  ALSvsHC_SigPro_Exist_Platform[ProS, "MS_NONdel"] <- ifelse(ProS %in% colnames(MS_NONdel_ProF), "Y", "N")
+}
+
+write.csv(ALSvsHC_SigPro_Exist_Platform, file = paste0(outPath, "ALSvsHC_SigPro_Exist_Platform.csv"))
+
+pdf(paste0(outPath, "ALSvsHC_SigPro_In_Platform.pdf"))
+
+# ---------- scatter plot between two platforms ----------
+plot_scatter <- function(df1, df2, protein, label1, label2) {
+  # Find common samples
+  comSamp <- intersect(rownames(df1), rownames(df2))
+
+  plot_df <- tibble(
+    x = df1[comSamp, protein],
+    y = df2[comSamp, protein]
+  )
+  
+  ggplot(plot_df, aes(x, y)) +
+    geom_point(alpha = 0.7) +
+    labs(
+      title = paste("Protein:", protein),
+      x = label1,
+      y = label2
+    ) +
+    theme_bw(base_size = 14)
+}
+
+for (ProS in ALSvsHC_SigPro_List) {
+  
+  has_Olink   <- ProS %in% colnames(Olink_ProF)
+  has_BEADdel <- ProS %in% colnames(MS_BEADdel_ProF)
+  has_NONdel  <- ProS %in% colnames(MS_NONdel_ProF)
+  
+  # Olink vs BEADdel
+  if (has_Olink && has_BEADdel) {
+    print(
+      plot_scatter(
+        Olink_ProF, MS_BEADdel_ProF,
+        protein = ProS,
+        label1 = "Olink",
+        label2 = "MS_BEADdel"
+      )
+    )
+  }
+  
+  # Olink vs NONdel
+  if (has_Olink && has_NONdel) {
+    print(
+      plot_scatter(
+        Olink_ProF, MS_NONdel_ProF,
+        protein = ProS,
+        label1 = "Olink",
+        label2 = "MS_NONdel"
+      )
+    )
+  }
+}
+
+dev.off()
+
+# compute overlaps per var and build a summary table
+summary_list <- lapply(varList1, function(var) {
+  s_bead <- sig_BEADdel[[var]]
+  s_non  <- sig_NONdel[[var]]
+  s_ol   <- sig_Olink[[var]]
+  
+  overlap_BEADdel_NONdel <- intersect(s_bead, s_non)
+  overlap_BEADdel_Olink  <- intersect(s_bead, s_ol)
+  overlap_NONdel_Olink   <- intersect(s_non, s_ol)
+  overlap_all3           <- Reduce(intersect, list(s_bead, s_non, s_ol))
+  
+  data.frame(
+    var = var,
+    Comparison = c("BEADdel vs NONdel", "BEADdel vs Olink", "NONdel vs Olink", "All three"),
+    nProteins = c(
+      length(overlap_BEADdel_NONdel),
+      length(overlap_BEADdel_Olink),
+      length(overlap_NONdel_Olink),
+      length(overlap_all3)
+    ),
+    stringsAsFactors = FALSE
+  )
+})
+
+summary_df <- do.call(rbind, summary_list)
+
+# Function to compute overlaps for a single var
+compute_overlap <- function(var) {
+  bead  <- sig_BEADdel[[var]]
+  nond  <- sig_NONdel[[var]]
+  olink <- sig_Olink[[var]]
+  
+  list(
+    BEADdel_vs_NONdel   = intersect(bead, nond),
+    BEADdel_vs_Olink    = intersect(bead, olink),
+    NONdel_vs_Olink     = intersect(nond, olink),
+    All_three           = Reduce(intersect, list(bead, nond, olink))
+  )
+}
+
+# Compute overlaps for each var
+overlap_list <- lapply(varList1, compute_overlap)
+names(overlap_list) <- varList1
+
+# Write summary
+write.csv(summary_df, file = paste0(outPath, "overlap_summary_counts.csv"), 
+          row.names = FALSE)
+
+# Also save element names for full inspection
+save(overlap_list, file = paste0(outPath, "overlap_elements.rdat"))
+
+summary_df
+
+# -------------------------------------------
+# Significantly expressed protein expression 
+# -------------------------------------------
+
+
+# ------------
+# Volcano Plot
+# ------------
+
+# -------------------
+# Enrichment Testing
+# -------------------
+# fgseaPath <- fgsea::fgsea(pathways = all_gene_sets, stats=ranks, scoreType = whichType, eps = 0.0) ### we will not limit the size (minSize and maxSize) here, just output everything, but would select the proper size for further plotting. 
+
