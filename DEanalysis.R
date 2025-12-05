@@ -620,17 +620,288 @@ ALSvsHC_Olink_logisticReg_v1_DE <- rownames(ALSvsHC_Olink_result_tbl_adj_v1_GML)
 ALSvsHC_MS_BEADdel_result_tbl_adj_v1_GML <- get_DE_Pvalue_Table_GLM(MS_BEADdel_ProF_matchClinic, MS_BEADdel_merged, varList2, outPath, "MS_BEADdel", "logistic", "ALSvsHC", FALSE)
 ALSvsHC_MS_BEADdel_logisticReg_v1_DE <- rownames(ALSvsHC_MS_BEADdel_result_tbl_adj_v1_GML)[which(ALSvsHC_MS_BEADdel_result_tbl_adj_v1_GML < 0.05)]
 
+ALSvsHC_MS_NONdel_result_tbl_adj_v1_GML <- get_DE_Pvalue_Table_GLM(MS_NONdel_ProF_matchClinic, MS_NONdel_merged, varList2, outPath, "MS_NONdel", "logistic", "ALSvsHC", FALSE)
+ALSvsHC_MS_NONdel_logisticReg_v1_DE <- rownames(ALSvsHC_MS_NONdel_result_tbl_adj_v1_GML)[which(ALSvsHC_MS_NONdel_result_tbl_adj_v1_GML < 0.05)]
+
+ALSvsHC_lgReg_SigPro_List <- unique(c(ALSvsHC_Olink_logisticReg_v1_DE, ALSvsHC_MS_BEADdel_logisticReg_v1_DE, ALSvsHC_MS_NONdel_logisticReg_v1_DE))
+
+ALSvsHC_lgReg_SigPro_Exist_Platform <- matrix(NA, nrow = length(ALSvsHC_lgReg_SigPro_List), ncol=9)
+rownames(ALSvsHC_lgReg_SigPro_Exist_Platform) <- ALSvsHC_lgReg_SigPro_List
+colnames(ALSvsHC_lgReg_SigPro_Exist_Platform) <- c("Olink", "MS_BEADdel", "MS_NONdel", "padj_Olink", "logFC_Olink", "padj_MS_BEADdel", "logFC_MS_BEADdel", "padj_MS_NONdel", "logFC_MS_NONdel")
+
+for(ProS in ALSvsHC_lgReg_SigPro_List){ 
+  ALSvsHC_lgReg_SigPro_Exist_Platform[ProS, "Olink"] <- ifelse(ProS %in% colnames(Olink_ProF), "YES", "NO") 
+  ALSvsHC_lgReg_SigPro_Exist_Platform[ProS, "MS_BEADdel"] <- ifelse(ProS %in% colnames(MS_BEADdel_ProF), "YES", "NO") 
+  ALSvsHC_lgReg_SigPro_Exist_Platform[ProS, "MS_NONdel"] <- ifelse(ProS %in% colnames(MS_NONdel_ProF), "YES", "NO")
+}
+
+for(ProS in ALSvsHC_lgReg_SigPro_List){
+  ALSvsHC_lgReg_SigPro_Exist_Platform[ProS, "logFC_Olink"] <- ifelse(ALSvsHC_lgReg_SigPro_Exist_Platform[ProS, "Olink"] == "YES", signif(ALSvsHC_logFC_Olink_F[ProS],4), NA)
+  ALSvsHC_lgReg_SigPro_Exist_Platform[ProS, "padj_Olink"] <- ifelse(ALSvsHC_lgReg_SigPro_Exist_Platform[ProS, "Olink"] == "YES", signif(ALSvsHC_Olink_result_tbl_adj_v1_GML[ProS,1],4), NA)
+  
+  ALSvsHC_lgReg_SigPro_Exist_Platform[ProS, "logFC_MS_BEADdel"] <- ifelse(ALSvsHC_lgReg_SigPro_Exist_Platform[ProS, "MS_BEADdel"] == "YES", signif(ALSvsHC_logFC_MS_BEADdel_F[ProS],4), NA)
+  ALSvsHC_lgReg_SigPro_Exist_Platform[ProS, "padj_MS_BEADdel"] <- ifelse(ALSvsHC_lgReg_SigPro_Exist_Platform[ProS, "MS_BEADdel"] == "YES", signif(ALSvsHC_MS_BEADdel_result_tbl_adj_v1_GML[ProS,1],4), NA)
+  
+  ALSvsHC_lgReg_SigPro_Exist_Platform[ProS, "logFC_MS_NONdel"] <- ifelse(ALSvsHC_lgReg_SigPro_Exist_Platform[ProS, "MS_NONdel"] == "YES", signif(ALSvsHC_logFC_MS_NONdel_F[ProS],4), NA)
+  ALSvsHC_lgReg_SigPro_Exist_Platform[ProS, "padj_MS_NONdel"] <- ifelse(ALSvsHC_lgReg_SigPro_Exist_Platform[ProS, "MS_NONdel"] == "YES", signif(ALSvsHC_MS_NONdel_result_tbl_adj_v1_GML[ProS,1],4), NA)
+}
+
+write.csv(ALSvsHC_lgReg_SigPro_Exist_Platform, file = paste0(outPath, "ALSvsHC_lgReg_SigPro_Exist_Platform.csv"))
+
+pdf(paste0(outPath, "ALSvsHC_lgReg_SigPro_In_Platform.pdf"))
+
+# ---------- scatter plot between two platforms ----------
+plot_scatter <- function(df1, df2, protein, label1, label2) {
+  # Find common samples
+  comSamp <- intersect(rownames(df1), rownames(df2))
+  
+  plot_df <- tibble(
+    x = df1[comSamp, protein],
+    y = df2[comSamp, protein]
+  )
+  
+  ggplot(plot_df, aes(x, y)) +
+    geom_point(alpha = 0.7) +
+    labs(
+      title = paste("Protein:", protein),
+      x = label1,
+      y = label2
+    ) +
+    theme_bw(base_size = 14)
+}
+
+for (ProS in ALSvsHC_lgReg_SigPro_List) {
+  
+  has_Olink   <- ProS %in% colnames(Olink_ProF)
+  has_BEADdel <- ProS %in% colnames(MS_BEADdel_ProF)
+  has_NONdel  <- ProS %in% colnames(MS_NONdel_ProF)
+  
+  # Olink vs BEADdel
+  if (has_Olink && has_BEADdel) {
+    print(
+      plot_scatter(
+        Olink_ProF, MS_BEADdel_ProF,
+        protein = ProS,
+        label1 = "Olink",
+        label2 = "MS_BEADdel"
+      )
+    )
+  }
+  
+  # Olink vs NONdel
+  if (has_Olink && has_NONdel) {
+    print(
+      plot_scatter(
+        Olink_ProF, MS_NONdel_ProF,
+        protein = ProS,
+        label1 = "Olink",
+        label2 = "MS_NONdel"
+      )
+    )
+  }
+  
+  # BEADdel vs NONdel
+  if (has_BEADdel && has_NONdel) {
+    print(
+      plot_scatter(
+        MS_BEADdel_ProF, MS_NONdel_ProF,
+        protein = ProS,
+        label1 = "MS_BEADdel",
+        label2 = "MS_NONdel"
+      )
+    )
+  }
+  
+}
+
+dev.off()
+
+#######################################################################################################################################################################################
 DCvsHC_Olink_result_tbl_adj_v1_GML <- get_DE_Pvalue_Table_GLM(Olink_ProF_matchClinic, Olink_merged, varList2, outPath, "Olink", "logistic", "DCvsHC", FALSE)
 DCvsHC_Olink_logisticReg_v1_DE <- rownames(DCvsHC_Olink_result_tbl_adj_v1_GML)[which(DCvsHC_Olink_result_tbl_adj_v1_GML<0.05)]
 
-### all samples
-ALSvsHC_result_tbl_adj_v1_GML <- get_DE_Pvalue_Table_GLM(Olink_ProF_matchClinic, Olink_merged, varList2, outPath, "Olink", "logistic", "ALSvsHC", FALSE)
-ALSvsHC_logisticReg_DE <- rownames(ALSvsHC_result_tbl_adj_v1_GML)[which(ALSvsHC_result_tbl_adj_v1_GML < 0.05)]
+DCvsHC_MS_BEADdel_result_tbl_adj_v1_GML <- get_DE_Pvalue_Table_GLM(MS_BEADdel_ProF_matchClinic, MS_BEADdel_merged, varList2, outPath, "MS_BEADdel", "logistic", "DCvsHC", FALSE)
+DCvsHC_MS_BEADdel_logisticReg_v1_DE <- rownames(DCvsHC_MS_BEADdel_result_tbl_adj_v1_GML)[which(DCvsHC_MS_BEADdel_result_tbl_adj_v1_GML < 0.05)]
 
+DCvsHC_MS_NONdel_result_tbl_adj_v1_GML <- get_DE_Pvalue_Table_GLM(MS_NONdel_ProF_matchClinic, MS_NONdel_merged, varList2, outPath, "MS_NONdel", "logistic", "DCvsHC", FALSE)
+DCvsHC_MS_NONdel_logisticReg_v1_DE <- rownames(DCvsHC_MS_NONdel_result_tbl_adj_v1_GML)[which(DCvsHC_MS_NONdel_result_tbl_adj_v1_GML < 0.05)]
 
-# ------------
-# Volcano Plot
-# ------------
+DCvsHC_SigPro_List <- unique(c(DCvsHC_Olink_logisticReg_v1_DE, DCvsHC_MS_BEADdel_logisticReg_v1_DE, DCvsHC_MS_NONdel_logisticReg_v1_DE))
+
+DCvsHC_logFC_Olink_F <- extract_logFC(Olink_merged, Olink_ProF_matchClinic, "DISEASE CONTROL", "HEALTHY CONTROL")
+DCvsHC_logFC_MS_BEADdel_F <- extract_logFC(MS_BEADdel_merged, MS_BEADdel_ProF_matchClinic, "DISEASE CONTROL", "HEALTHY CONTROL")
+DCvsHC_logFC_MS_NONdel_F <- extract_logFC(MS_NONdel_merged, MS_NONdel_ProF_matchClinic, "DISEASE CONTROL", "HEALTHY CONTROL")
+
+DCvsHC_SigPro_Exist_Platform <- matrix(NA, nrow = length(DCvsHC_SigPro_List), ncol=9)
+rownames(DCvsHC_SigPro_Exist_Platform) <- DCvsHC_SigPro_List
+colnames(DCvsHC_SigPro_Exist_Platform) <- c("Olink", "MS_BEADdel", "MS_NONdel", "padj_Olink", "logFC_Olink", "padj_MS_BEADdel", "logFC_MS_BEADdel", "padj_MS_NONdel", "logFC_MS_NONdel")
+
+for(ProS in DCvsHC_SigPro_List){ 
+  DCvsHC_SigPro_Exist_Platform[ProS, "Olink"] <- ifelse(ProS %in% colnames(Olink_ProF), "YES", "NO") 
+  DCvsHC_SigPro_Exist_Platform[ProS, "MS_BEADdel"] <- ifelse(ProS %in% colnames(MS_BEADdel_ProF), "YES", "NO") 
+  DCvsHC_SigPro_Exist_Platform[ProS, "MS_NONdel"] <- ifelse(ProS %in% colnames(MS_NONdel_ProF), "YES", "NO")
+}
+
+for(ProS in DCvsHC_SigPro_List){
+  DCvsHC_SigPro_Exist_Platform[ProS, "logFC_Olink"] <- ifelse(DCvsHC_SigPro_Exist_Platform[ProS, "Olink"] == "YES", signif(DCvsHC_logFC_Olink_F[ProS],4), NA)
+  DCvsHC_SigPro_Exist_Platform[ProS, "padj_Olink"] <- ifelse(DCvsHC_SigPro_Exist_Platform[ProS, "Olink"] == "YES", signif(DCvsHC_Olink_result_tbl_adj_v1_GML[ProS,1],4), NA)
+  
+  DCvsHC_SigPro_Exist_Platform[ProS, "logFC_MS_BEADdel"] <- ifelse(DCvsHC_SigPro_Exist_Platform[ProS, "MS_BEADdel"] == "YES", signif(DCvsHC_logFC_MS_BEADdel_F[ProS],4), NA)
+  DCvsHC_SigPro_Exist_Platform[ProS, "padj_MS_BEADdel"] <- ifelse(DCvsHC_SigPro_Exist_Platform[ProS, "MS_BEADdel"] == "YES", signif(DCvsHC_MS_BEADdel_result_tbl_adj_v1_GML[ProS,1],4), NA)
+  
+  DCvsHC_SigPro_Exist_Platform[ProS, "logFC_MS_NONdel"] <- ifelse(DCvsHC_SigPro_Exist_Platform[ProS, "MS_NONdel"] == "YES", signif(DCvsHC_logFC_MS_NONdel_F[ProS],4), NA)
+  DCvsHC_SigPro_Exist_Platform[ProS, "padj_MS_NONdel"] <- ifelse(DCvsHC_SigPro_Exist_Platform[ProS, "MS_NONdel"] == "YES", signif(DCvsHC_MS_NONdel_result_tbl_adj_v1_GML[ProS,1],4), NA)
+}
+
+write.csv(DCvsHC_SigPro_Exist_Platform, file = paste0(outPath, "DCvsHC_SigPro_Exist_Platform.csv"))
+
+pdf(paste0(outPath, "DCvsHC_SigPro_In_Platform.pdf"))
+
+# ---------- scatter plot between two platforms ----------
+plot_scatter <- function(df1, df2, protein, label1, label2) {
+  # Find common samples
+  comSamp <- intersect(rownames(df1), rownames(df2))
+  
+  plot_df <- tibble(
+    x = df1[comSamp, protein],
+    y = df2[comSamp, protein]
+  )
+  
+  ggplot(plot_df, aes(x, y)) +
+    geom_point(alpha = 0.7) +
+    labs(
+      title = paste("Protein:", protein),
+      x = label1,
+      y = label2
+    ) +
+    theme_bw(base_size = 14)
+}
+
+for (ProS in DCvsHC_SigPro_List) {
+  
+  has_Olink   <- ProS %in% colnames(Olink_ProF)
+  has_BEADdel <- ProS %in% colnames(MS_BEADdel_ProF)
+  has_NONdel  <- ProS %in% colnames(MS_NONdel_ProF)
+  
+  # Olink vs BEADdel
+  if (has_Olink && has_BEADdel) {
+    print(
+      plot_scatter(
+        Olink_ProF, MS_BEADdel_ProF,
+        protein = ProS,
+        label1 = "Olink",
+        label2 = "MS_BEADdel"
+      )
+    )
+  }
+  
+  # Olink vs NONdel
+  if (has_Olink && has_NONdel) {
+    print(
+      plot_scatter(
+        Olink_ProF, MS_NONdel_ProF,
+        protein = ProS,
+        label1 = "Olink",
+        label2 = "MS_NONdel"
+      )
+    )
+  }
+  
+  # BEADdel vs NONdel
+  if (has_BEADdel && has_NONdel) {
+    print(
+      plot_scatter(
+        MS_BEADdel_ProF, MS_NONdel_ProF,
+        protein = ProS,
+        label1 = "MS_BEADdel",
+        label2 = "MS_NONdel"
+      )
+    )
+  }
+  
+}
+
+dev.off()
+# ------------------------------------------
+# Different Regression Model Comparison
+# ------------------------------------------
+# Linear-regression DE list
+### 1. Linear-regression DE list
+ALSvsHC_SigPro_List <- unique(c(
+  sig_BEADdel[["ALSvsHC"]],
+  sig_NONdel[["ALSvsHC"]],
+  sig_Olink[["ALSvsHC"]]
+))
+
+### 2. Logistic-regression DE list
+ALSvsHC_lgReg_SigPro_List <- unique(c(
+  ALSvsHC_Olink_logisticReg_v1_DE, 
+  ALSvsHC_MS_BEADdel_logisticReg_v1_DE, 
+  ALSvsHC_MS_NONdel_logisticReg_v1_DE
+))
+
+### 3. Platform-specific DE sets
+# Linear
+lin_olink  <- sig_Olink[["ALSvsHC"]]
+lin_bead   <- sig_BEADdel[["ALSvsHC"]]
+lin_nondel <- sig_NONdel[["ALSvsHC"]]
+
+# Logistic
+log_olink  <- ALSvsHC_Olink_logisticReg_v1_DE
+log_bead   <- ALSvsHC_MS_BEADdel_logisticReg_v1_DE
+log_nondel <- ALSvsHC_MS_NONdel_logisticReg_v1_DE
+
+### 4. Load library
+library(VennDiagram)
+
+### 5. Function to draw and save platform-wise Venn diagrams
+plot_lin_log_venn <- function(lin_set, log_set, title, filename){
+  venn.plot <- venn.diagram(
+    x = list(
+      Linear   = lin_set,
+      Logistic = log_set
+    ),
+    filename = NULL,
+    fill = c("#1f78b4", "#33a02c"),
+    alpha = 0.5,
+    cex = 1.0,
+    cat.cex = 1.0,
+    cat.pos = 0,
+    main = title,
+    main.cex = 1.2
+  )
+  
+  png(filename, width = 1800, height = 1800, res = 300)
+  grid::grid.draw(venn.plot)
+  dev.off()
+}
+
+### 6. Generate Venn diagrams for each platform
+
+# Olink
+plot_lin_log_venn(
+  lin_set = lin_olink,
+  log_set = log_olink,
+  title = "Olink: Linear vs Logistic DE Proteins",
+  filename = paste0(outPath,"venn_olink_lin_vs_log.png")
+)
+
+# MS_BEADdel
+plot_lin_log_venn(
+  lin_set = lin_bead,
+  log_set = log_bead,
+  title = "MS_BEADdel: Linear vs Logistic DE Proteins",
+  filename = paste0(outPath,"venn_bead_lin_vs_log.png")
+)
+
+# MS_NONdel
+plot_lin_log_venn(
+  lin_set = lin_nondel,
+  log_set = log_nondel,
+  title = "MS_NONdel: Linear vs Logistic DE Proteins",
+  filename = paste0(outPath,"venn_nondel_lin_vs_log.png")
+)
+
 
 # -------------------
 # Enrichment Testing

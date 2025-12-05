@@ -101,14 +101,31 @@ boxcoxTranform <- function(VariableHere, maxScore) {
 # Function to generate DE results table using GLM
 get_DE_Pvalue_Table_GLM <- function(ProExpF, Merged, covariateList, outPath, whichPlatform, regMethod, varList1, use_random_YN){
   
-  get_effect <- function(fit, protein_var){
+  get_effect <- function(fit, protein_var) {
+    # Safe version: returns NA if protein_var not in model coefficients
+    coef_value <- NA
+    
     if("merMod" %in% class(fit)) {        # lmer, glmer
-      return(fixef(fit)[protein_var])
+      coef_names <- names(fixef(fit))
+      if(protein_var %in% coef_names) {
+        coef_value <- fixef(fit)[protein_var]
+      }
+      
     } else if("clmm" %in% class(fit)) {   # ordinal mixed model
-      return(fixef(fit)[protein_var])
-    } else {
-      return(coef(fit)[protein_var])      # lm, glm, polr, multinom
+      coef_names <- names(fixef(fit))
+      if(protein_var %in% coef_names) {
+        coef_value <- fixef(fit)[protein_var]
+      }
+      
+    } else {                              # lm, glm, polr, multinom
+      coef_names <- names(coef(fit))
+      if(protein_var %in% coef_names) {
+        coef_value <- coef(fit)[protein_var]
+      }
     }
+    
+    # Return the coefficient (or NA if not found)
+    return(coef_value)
   }
   
   # ---------- Initialize result tables ----------
@@ -141,20 +158,20 @@ get_DE_Pvalue_Table_GLM <- function(ProExpF, Merged, covariateList, outPath, whi
     # ---------- LOOP over PROTEINS ----------
     # =====================================================
     for(i in seq_along(colnames(ProExpF))){
-      protein_var <- make.names(colnames(ProExpF)[i])
+      protein_var <- colnames(ProExpF)[i]
       
       covar_str <- paste(covariates, collapse="+")
       
       if(use_random_YN){
         full_formula <- as.formula(
-          paste0(mainVar, " ~ ", protein_var, " + ", covar_str, " + (1|SubjectID_Random)")
+          paste0(mainVar, " ~ `", protein_var, "` + ", covar_str, " + (1|SubjectID_Random)")
         )
         null_formula <- as.formula(
           paste0(mainVar, " ~ ", covar_str, " + (1|SubjectID_Random)")
         )
       } else {
         full_formula <- as.formula(
-          paste0(mainVar, " ~ ", protein_var, " + ", covar_str)
+          paste0(mainVar, " ~ `", protein_var, "` + ", covar_str)
         )
         null_formula <- as.formula(
           paste0(mainVar, " ~ ", covar_str)
@@ -173,7 +190,7 @@ get_DE_Pvalue_Table_GLM <- function(ProExpF, Merged, covariateList, outPath, whi
         
         # LRT
         LRT <- anova(null_fit, fit)
-        result_tbl_p[i, mainVar] <- LRT$"Pr(>Chisq)"[2]
+        result_tbl_p[i, mainVar] <- LRT$`Pr(>Chisq)`[2]
         result_tbl_EffectSize[i, mainVar] <- get_effect(fit, protein_var)
       }
       
@@ -191,7 +208,7 @@ get_DE_Pvalue_Table_GLM <- function(ProExpF, Merged, covariateList, outPath, whi
         }
         
         LRT <- anova(null_fit, fit, test="LRT")
-        result_tbl_p[i, mainVar] <- LRT$"Pr(>Chi)"[2]
+        result_tbl_p[i, mainVar] <- LRT$`Pr(>Chi)`[2]
         result_tbl_EffectSize[i, mainVar] <- get_effect(fit, protein_var)
       }
       
@@ -223,7 +240,7 @@ get_DE_Pvalue_Table_GLM <- function(ProExpF, Merged, covariateList, outPath, whi
         }
         
         LRT <- anova(null_fit, fit)
-        result_tbl_p[i, mainVar] <- LRT$"Pr(>Chi)"[2]
+        result_tbl_p[i, mainVar] <- LRT$`Pr(>Chisq)`[2]
         result_tbl_EffectSize[i, mainVar] <- get_effect(fit, protein_var)
       }
     } # end protein loop
