@@ -1,12 +1,17 @@
 ---
-title: "Differences and Shared Characteristics of CSF Proteome Obtained from MS & Olink"
+title: |
+  Comparative Analysis of CSF Proteomics Across MS and Olink Platforms
+  and Quality Control Validation of MS Data
+author: "Yun Deng"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
 output:
   html_document:
     toc: true
-    toc_float: 
+    toc_float:
       collapsed: false
       smooth_scroll: true
 ---
+
 <!-- Inline CSS for Fire Red Titles -->
 <style>
 h1 {
@@ -29,7 +34,6 @@ library(LaplacesDemon)
 library(philentropy)
 library(lsa)
 library(ComplexUpset)
-library(igraph)
 library(ggplot2)
 library(ggExtra)
 library(factoextra)
@@ -41,20 +45,15 @@ library(gridExtra)
 library(grid)
 library(htmltools)
 
+
 option_list <- list(
-  make_option(c("-i", "--inputPath"), type = "character", default = "/home/rstudio/YD/MS/input/",
+  make_option(c("-i", "--inputPath"), type = "character", default = "/home/rstudio/workspace/Data Collection/",
               help = "Path to input files.", metavar = "INPUT_PATH"),
-  make_option(c("-o", "--outPath"), type = "character", default = "/home/rstudio/YD/MS/output/Compare/",
+  make_option(c("-o", "--outPath"), type = "character", default = "/home/rstudio/workspace/Data Collection/output_report/",
               help = "Path to output files.", metavar = "OUTPUT_PATH"),
-  make_option(c("-m", "--intermediatePath"), type = "character", default = "/home/rstudio/YD/MS/intermediate/Compare/",
+  make_option(c("-m", "--intermediatePath"), type = "character", default = "/home/rstudio/workspace/Data Collection/oxf-qc2-als-mass-spectometry-wb-genial-hazelnut-7025/Data/intermediate/",
               help = "Path to store intermediate data during processing.", metavar = "MD_PATH"),
-  make_option(c("-d","--DEL_file"), type = "character", default = "/home/rstudio/YD/MS/output/BEADdel/SAMPLE/QCed_Frame.csv", 
-              help = "Protein expression input file name.", metavar = "DEL_file"),
-  make_option(c("-n","--NON_file"), type = "character", default = "/home/rstudio/YD/MS/output/NONdel/SAMPLE/QCed_Frame.csv", 
-              help = "Clinical meta input file name.", metavar = "NON_file"),
-  make_option(c("-f", "--pdfFile"), type = "character", default = "QCed_comp.pdf",
-              help = "Path of codes", metavar = "pdfFile"),
-  make_option(c("-s", "--codePath"), type = "character", default = "/home/rstudio/YD/MS/script/Compare/",
+  make_option(c("-s", "--codePath"), type = "character", default = "/home/rstudio/repos/",
               help = "Path of codes", metavar = "CODE_PATH")
 )
 
@@ -69,20 +68,18 @@ inputPath <- args$inputPath
 outPath <- args$outPath
 intermediatePath <- args$intermediatePath
 codePath <- args$codePath
-DEL_file <- args$DEL_file
-NON_file <- args$NON_file
-pdfFile <- args$pdfFile
 
 source(paste0(codePath,"Comp_Dataset_Call.R"))
 
 ### DEL Protein Naming Scheme Mapping
-DEL_ProMap <- read_excel(paste0(inputPath, "ProteinMapping/BEADdepletions_ProteinMapping.xlsx"))
-NON_ProMap <- read_excel(paste0(inputPath, "ProteinMapping/NONDEPLETED_ProteinMapping.xlsx"))
-# Olink_ProMap <- read_excel(paste0(inputPath, "ProteinMapping/Olink_ProteinMapping.xlsx"))
+DEL_ProMap <- read_excel(paste0(inputPath, "oxf-qc2-als-mass-spectometry-wb-genial-hazelnut-7025/Data/output/BEADdel/SAMPLE/BEADdepletions_ProteinMapping.xlsx"))
+NON_ProMap <- read_excel(paste0(inputPath, "oxf-qc2-als-mass-spectometry-wb-genial-hazelnut-7025/Data/output/NONdel/SAMPLE/NONDEPLETED_ProteinMapping.xlsx"))
 
 ### Read in two datasets
-DEL_Sample <-  read.table(DEL_file)
-NON_Sample <- read.table(NON_file)
+DEL_Sample <-  read.csv(paste0(inputPath, "oxf-qc2-als-mass-spectometry-wb-genial-hazelnut-7025/Data/output/BEADdel/SAMPLE/QCed_Frame.csv"), row.names=1)
+
+NON_Sample <- read.csv(paste0(inputPath,"oxf-qc2-als-mass-spectometry-wb-genial-hazelnut-7025/Data/output/NONdel/SAMPLE/QCed_Frame.csv"), row.names=1)
+
 if(colnames(DEL_Sample)[1] == "PlateID"){
   DEL_Sample <- DEL_Sample[,-1]
   NON_Sample <- NON_Sample[,-1]}
@@ -91,13 +88,12 @@ colnames(DEL_Sample) <- sapply(colnames(DEL_Sample), function(x){DEL_ProMap[whic
 colnames(NON_Sample) <- sapply(colnames(NON_Sample), function(x){NON_ProMap[which(NON_ProMap$Protein.Group==x),"Genes"]})
 
 ### Raw Data
-DEL_Sample_Raw <-  read.table("/home/rstudio/YD/MS/intermediate/BEADdel/SAMPLE/ProDat_RmContam.csv")
-NON_Sample_Raw <- read.table("/home/rstudio/YD/MS/intermediate/NONdel/SAMPLE/ProDat_RmContam.csv")
+DEL_Sample_Raw <-  read.csv(paste0(intermediatePath, "BEADdel/SAMPLE/ProDat_RmContam.csv"), sep=",", row.names=1)
+NON_Sample_Raw <- read.csv(paste0(intermediatePath, "NONdel/SAMPLE/ProDat_RmContam.csv"), sep=",", row.names=1)
 colnames(DEL_Sample_Raw) <- sapply(colnames(DEL_Sample_Raw), function(x){DEL_ProMap[which(DEL_ProMap$Protein.Group==x),"Genes"]})
 colnames(NON_Sample_Raw) <- sapply(colnames(NON_Sample_Raw), function(x){NON_ProMap[which(NON_ProMap$Protein.Group==x),"Genes"]})
 
-Olink_Frame <- read.csv("/home/rstudio/YD/input/imcm_team_als_csf_olink_cleaned_2024-08-29.csv", row.names = 1)
-Olink_Frame %<>% select(-one_of(c("PlateID", "median_npx")))
+Olink_Frame <- read.csv(paste0(inputPath, "Data-CSF/oxf-da28-opdc-als-multiple-cohorts-olink-csf/CSF_Customised_ProDataClean.csv"), sep = ",", row.names = 1)
 
 ### Check the multiple gene segments within one name
 # colnames(Olink_Frame)[grep("\\.",colnames(Olink_Frame))]
@@ -105,15 +101,11 @@ Olink_Frame %<>% select(-one_of(c("PlateID", "median_npx")))
 # colnames(DEL_Sample_Raw)[grep("\\.",colnames(DEL_Sample_Raw))]
 # colnames(NON_Sample_Raw)[grep("\\.",colnames(NON_Sample_Raw))]
 
-### Manually change some protein mapping of Olink
+### Manually change some protein mapping of Olink to match MS
 colnames(Olink_Frame)[which(colnames(Olink_Frame) == "HLA.A")] = "HLA-A"
 colnames(Olink_Frame)[which(colnames(Olink_Frame) == "HLA.E")] = "HLA-E"
 colnames(Olink_Frame)[which(colnames(Olink_Frame) == "HLA.DRA")] = "HLA-DRA"
 colnames(Olink_Frame) <- gsub("_", ".", colnames(Olink_Frame))
-
-### Manually change some SampleID of Olink, C9 to C9C, BM1 to BX1
-rownames(Olink_Frame) <- sub("BM1_", "BX1_", rownames(Olink_Frame))
-rownames(Olink_Frame) <- sub("C9_", "C9C_", rownames(Olink_Frame))
 
 ```
 
@@ -142,17 +134,19 @@ rownames(Olink_Frame) <- sub("C9_", "C9C_", rownames(Olink_Frame))
 # names(CommunityGroup)[which(names(CommunityGroup) == "HLA.DRA")] = "HLA-DRA"
 # 
 # save(CommunityGroup, file = paste0(intermediatePath,"CommunityGroup.rdat"))
-load(paste0(intermediatePath,"CommunityGroup.rdat"))
+# load(paste0(intermediatePath,"CommunityGroup.rdat"))
 ```
 
 ```{r, read in meta data as color information for plot, echo=FALSE, warning=FALSE, message=FALSE}
 ### Read in Limit of detection meta data for both proteins and samples
-# combinedP <- read.csv("/home/rstudio/YD/input/P230192_CSP1-5_CINO_and_C2I2N2O2_EXTENDED_NPX_2024-01-18.csv", sep = ";")
-# dilutionBinF <- combinedP[,c("Assay","Block")] %>% unique() %>% filter(!grepl("control",Assay))
-# Block = dilutionBinF$Block
-# names(Block) <- dilutionBinF$Assay
-# save(Block, file = paste0(intermediatePath,"BorrowedBlock.rdat"))
-load(paste0(intermediatePath,"BorrowedBlock.rdat"))
+combinedP <- read.csv(
+  paste0(inputPath,"Data-CSF/oxf-da28-opdc-als-multiple-cohorts-olink-csf/P230192_CSP1-5_CINO_and_C2I2N2O2_EXTENDED_NPX_2024-01-18_cleaned.csv"),sep = ";")
+
+dilutionBinF <- combinedP[,c("Assay","Block")] %>% unique() %>% filter(!grepl("control",Assay))
+Block = dilutionBinF$Block
+names(Block) <- dilutionBinF$Assay
+save(Block, file = paste0(intermediatePath,"BorrowedBlock.rdat"))
+# load(paste0(intermediatePath,"BorrowedBlock.rdat"))
 
 # LODF <- combinedP[,c("Assay","LOD")] %>% distinct(Assay, .keep_all = TRUE) %>% filter(!grepl("control", Assay)) %>% mutate(Assay = gsub("_",".", Assay)) %>% mutate(Assay = sub("ERVV-1", "ERVV.1", Assay)) %>% mutate(Assay = sub("NT-proBNP", "NT.proBNP", Assay)) %>% filter(Assay %in% colnames(Olink_Frame))
 # LODlist = LODF$LOD
@@ -164,23 +158,26 @@ load(paste0(intermediatePath,"BorrowedBlock.rdat"))
 # load(paste0(intermediatePath,"LODlist.rdat"))
 
 ### Read in clinical meta data
-# ### clinical variables
-# ALS_ClinicVar1_F <- read.csv(paste0(inputPath, "20240827_minus_asymptomatic_at_risk_pseudo_anonymised_v2.csv"), sep=",")
-# ALS_ClinicVar2_F <- read.csv(paste0(inputPath, "20241014_asymptomatic_at_risk_binned_blinded.csv"), sep=",")
-# ALS_ClinicVarF <- rbind(ALS_ClinicVar1_F[intersect(colnames(ALS_ClinicVar1_F), colnames(ALS_ClinicVar2_F))], ALS_ClinicVar2_F[intersect(colnames(ALS_ClinicVar1_F), colnames(ALS_ClinicVar2_F))]) %>% select(CSF_OLINK_MANIFEST, GROUP) %>% filter(CSF_OLINK_MANIFEST != "")  %>% mutate(CSF_OLINK_MANIFEST = gsub("BX2", "BM2", CSF_OLINK_MANIFEST)) %>% mutate(CSF_OLINK_MANIFEST = gsub("BM1", "BX1", CSF_OLINK_MANIFEST)) 
-# ClinicVar <- ALS_ClinicVarF$GROUP
-# names(ClinicVar) <- ALS_ClinicVarF$CSF_OLINK_MANIFEST
-# save(ClinicVar, file = paste0(intermediatePath,"ClinicVar.rdat"))
-load(paste0(intermediatePath,"ClinicVar.rdat"))
+### clinical variables
+ALS_ClinicVarF <- read.csv(paste0(inputPath, "DA76/da76-wb-fleeting-cabbage-4050/Data/20251025_als_clinical_with_ambrosia_data_pseudonymized_FINAL.csv"), sep=",")
+ClinicVar <- ALS_ClinicVarF$GROUP
+names(ClinicVar) <- ALS_ClinicVarF$CSF_OLINK_MANIFEST
+save(ClinicVar, file = paste0(intermediatePath,"ClinicVar.rdat"))
+#load(paste0(intermediatePath,"ClinicVar.rdat"))
 ```
 
 ```{r, keep here temperarily, echo=FALSE, warning=FALSE, message=FALSE}
 KeepCommonSamp <- Reduce(intersect, list(rownames(Olink_Frame),rownames(DEL_Sample),rownames(NON_Sample)))
 KeepCommonPro <- Reduce(intersect, list(colnames(Olink_Frame),colnames(DEL_Sample),colnames(NON_Sample)))
 
-combinedP <- read.csv("/home/rstudio/YD/input/P230192_CSP1-5_CINO_and_C2I2N2O2_EXTENDED_NPX_2024-01-18.csv", sep = ";")
+combinedP <- read.csv(
+  paste0(inputPath,
+            "Data-CSF/oxf-da28-opdc-als-multiple-cohorts-olink-csf/P230192_CSP1-5_CINO_and_C2I2N2O2_EXTENDED_NPX_2024-01-18_cleaned.csv"), sep = ";")
+                      
 Olink_Frame_keep <- Olink_Frame[KeepCommonSamp,KeepCommonPro]
+
 LODF <- combinedP[,c("Assay","LOD")] %>% distinct(Assay, .keep_all = TRUE) %>% filter(!grepl("control", Assay)) %>% mutate(Assay = gsub("_",".", Assay)) %>% mutate(Assay = sub("ERVV-1", "ERVV.1", Assay)) %>% mutate(Assay = sub("NT-proBNP", "NT.proBNP", Assay)) %>% filter(Assay %in% colnames(Olink_Frame_keep))
+
 LODlist = LODF$LOD
 names(LODlist) <- LODF$Assay
 belowLOD_Protein <- sapply(names(LODlist), function(x){100*length(which(Olink_Frame_keep[,x] < LODlist[x]))/nrow(Olink_Frame_keep)})
@@ -189,7 +186,7 @@ belowLOD_Sample <- sapply(rownames(Olink_Frame_keep), function(x){100*length(whi
 ```
 
 # Overlap for Samples and Proteins{.tabset}
-<b><font face="Georgia" size="2em" color="#000000"> The overlapping are based on MS data sets after processing.</font></b>
+<b><font face="Georgia" size="2em" color="#000000"> The overlapping are based on MS and Olink data sets after quality control.</font></b>
 
 ## Proteins{.tabset}
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
@@ -200,18 +197,18 @@ set_list <- list(
 )
 
 elements <- unique(unlist(set_list))  # Extract all unique elements from sets
+
 binary_matrix <- as.data.frame(
-  sapply(set_list, function(set) elements %in% set)  # Check presence across sets
+  sapply(set_list, function(x) elements %in% x)
 )
-rownames(binary_matrix) <- elements  # Assign row names as elements
-colnames(binary_matrix) <- names(set_list)  # Assign column names as set names
+rownames(binary_matrix) <- elements
+colnames(binary_matrix) <- names(set_list)
 
 ComplexUpset::upset(
   binary_matrix,
-  intersect = names(set_list),  # Use the names of the sets as intersection columns
-  name = "Proteins in Sets"  # Label for the UpSet plot
+  intersect = names(set_list),
+  name = "Proteins in Platforms"
 )
-
 ```
 
 ## Samples{.tabset}
@@ -232,7 +229,7 @@ colnames(binary_matrix) <- names(set_list)
 ComplexUpset::upset(
   binary_matrix,
   intersect = names(set_list),  # Use the names of the sets as intersection columns
-  name = "Samples in Sets"  # Label for the UpSet plot
+  name = "Samples in Platformss"  # Label for the UpSet plot
 )
 ```
 
@@ -326,13 +323,13 @@ tagList(plots)
 
 ```
 
-## Jensen–Shannon Divergence {.tabset}
-<b><font face="Georgia" size="2em" color="#000000"> Jensen–Shannon divergence measures the similarity between two probability distributions. </font></b>
+<!-- ## Jensen–Shannon Divergence {.tabset} -->
+<!-- <b><font face="Georgia" size="2em" color="#000000"> Jensen–Shannon divergence measures the similarity between two probability distributions. </font></b> -->
 
-```{r, echo=FALSE, results = FALSE, warning=FALSE, message=FALSE}
-# JS_divergence <- getIndividualJS(NON_Sample, DEL_Sample, "Protein", "QCed MS_NON vs QCed MSbd")
+<!-- ```{r, echo=FALSE, results = FALSE, warning=FALSE, message=FALSE} -->
+<!-- # JS_divergence <- getIndividualJS(NON_Sample, DEL_Sample, "Protein", "QCed MS_NON vs QCed MSbd") -->
 
-```
+<!-- ``` -->
 
 ## MS Data at Different Normliastion Stages{.tabset}
 <b><font face="Georgia" size="2em" color="#000000"> Investigate whether particular MS data processing steps distort protein correlation.</font></b>
@@ -343,8 +340,8 @@ fileList <- c("ProDat_RmContam.csv", "ProDat_RmLargeMiss.csv", "ProDat_RFimput.c
 plots <- list()
 
 for(whichFile in fileList){
-  DEL_Sample_DiffNorm <-  read.table(paste0("/home/rstudio/YD/MS/intermediate/BEADdel/SAMPLE/", whichFile))
-  NON_Sample_DiffNorm <- read.table(paste0("/home/rstudio/YD/MS/intermediate/NONdel/SAMPLE/", whichFile))
+  DEL_Sample_DiffNorm <-  read.csv(paste0(intermediatePath, "BEADdel/SAMPLE/", whichFile), sep = ",", row.names = 1)
+  NON_Sample_DiffNorm <- read.csv(paste0(intermediatePath, "NONdel/SAMPLE/", whichFile), sep = ",", row.names = 1)
   
   colnames(DEL_Sample_DiffNorm) <- sapply(colnames(DEL_Sample_DiffNorm), function(x){DEL_ProMap[which(DEL_ProMap$Protein.Group==x),"Genes"]})
   colnames(NON_Sample_DiffNorm) <- sapply(colnames(NON_Sample_DiffNorm), function(x){NON_ProMap[which(NON_ProMap$Protein.Group==x),"Genes"]})
@@ -457,8 +454,8 @@ tagList(plots)
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
 for(whichFile in fileList){
-  DEL_Sample_DiffNorm <-  read.table(paste0("/home/rstudio/YD/MS/intermediate/BEADdel/SAMPLE/", whichFile))
-  NON_Sample_DiffNorm <- read.table(paste0("/home/rstudio/YD/MS/intermediate/NONdel/SAMPLE/", whichFile))
+  DEL_Sample_DiffNorm <-  read.csv(paste0(intermediatePath, "BEADdel/SAMPLE/", whichFile), sep = ",", row.names = 1)
+  NON_Sample_DiffNorm <- read.csv(paste0(intermediatePath, "NONdel/SAMPLE/", whichFile), sep = ",", row.names = 1)
   
   colnames(DEL_Sample_DiffNorm) <- sapply(colnames(DEL_Sample_DiffNorm), function(x){DEL_ProMap[which(DEL_ProMap$Protein.Group==x),"Genes"]})
   colnames(NON_Sample_DiffNorm) <- sapply(colnames(NON_Sample_DiffNorm), function(x){NON_ProMap[which(NON_ProMap$Protein.Group==x),"Genes"]})
@@ -530,3 +527,7 @@ grid.arrange(
   nrow = 1
 )
 ```
+
+#```{r}
+# Rscript -e "rmarkdown::render('presentation_2025.Rmd', output_dir = '/home/rstudio/workspace/Data Collection/output_report/')"
+#```
