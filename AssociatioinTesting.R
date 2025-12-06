@@ -337,12 +337,12 @@ Ranks_Olink_AllVar <- Calculate_Ranking_Metric(paste0(outPath, "Olink_logistic_R
                                                paste0(outPath, "Olink_logistic_RandomEffectFALSE_result_tbl_EffectSize.csv"),
                                                paste0(outPath, "Olink_linear_RandomEffectFALSE_result_tbl_EffectSize.csv"))
 
-Ranks_MS_BEADdel_AllVar <- Calculate_Ranking_Metric(paste0(outPath, "BEADdel_logistic_RandomEffectFALSE_result_tbl_p.csv"), 
+Ranks_MSBEADdel_AllVar <- Calculate_Ranking_Metric(paste0(outPath, "BEADdel_logistic_RandomEffectFALSE_result_tbl_p.csv"), 
                                                     paste0(outPath, "BEADdel_linear_RandomEffectFALSE_result_tbl_p.csv"),
                                                     paste0(outPath, "BEADdel_logistic_RandomEffectFALSE_result_tbl_EffectSize.csv"),
                                                     paste0(outPath, "BEADdel_linear_RandomEffectFALSE_result_tbl_EffectSize.csv"))
 
-Ranks_MS_NONdel_AllVar <- Calculate_Ranking_Metric(paste0(outPath, "NONdel_logistic_RandomEffectFALSE_result_tbl_p.csv"), 
+Ranks_MSNONdel_AllVar <- Calculate_Ranking_Metric(paste0(outPath, "NONdel_logistic_RandomEffectFALSE_result_tbl_p.csv"), 
                                                    paste0(outPath, "NONdel_linear_RandomEffectFALSE_result_tbl_p.csv"),
                                                    paste0(outPath, "NONdel_logistic_RandomEffectFALSE_result_tbl_EffectSize.csv"),
                                                    paste0(outPath, "NONdel_linear_RandomEffectFALSE_result_tbl_EffectSize.csv"))
@@ -360,7 +360,7 @@ pathBaseList <- c("GOBP","GOMF","GOCC","REACTOME","KEGG","Biocarta","WikiPathway
 
 GeneSetList <- sapply(paste0(pathBaseList,"GeneSets"),function(x){get(x)})
 
-platformList <- c("Olink", "MS_BEADdel", "MS_NONdel")
+platformList <- c("Olink", "MSBEADdel", "MSNONdel")
 
 SigPath_List <- lapply(varAll_List, function(v) {
   
@@ -439,6 +439,7 @@ for (ClinicVar in varAll_List) {
 }
 
 ### Bubble plot to show the significantly enriched pathways
+pdf(paste0(outPath, "PathwayEnrichment.pdf"))
 Enrich_Rdat_files <- paste0(pathBaseList, "_", varAll_List,".rdata")
 fileCt <- 1
 for (pathBase in pathBaseList){

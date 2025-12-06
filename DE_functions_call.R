@@ -348,7 +348,7 @@ makeBubble <- function(pathHere, patternHere, sizeHere1,sizeHere2, saveMessage){
   comSFDat=c()
   pThresh = 0.05
   for(fileSg in fileList){
-    comSF <- read.csv(paste0(pathHere,fileSg),sep="\t",header=TRUE)[,c("pathway","pval","padj","overlap","size","overlapGenes")] 
+    comSF <- read.csv(paste0(pathHere,fileSg),sep="\t",header=TRUE)[,c("pathway","pval","padj","log2err","ES", "NES", "size", "leadingEdge")] 
     comSF <- comSF[which(comSF$padj<pThresh),]
     YNSignificant <- ifelse(comSF$padj<0.05,"Y","N")
     comSF<- cbind(comSF,YNSignificant)
@@ -369,7 +369,7 @@ makeBubble <- function(pathHere, patternHere, sizeHere1,sizeHere2, saveMessage){
   
   comSFDat %<>% mutate(pathway = tolower(gsub("_", " ", gsub("^[^_]*_", "", pathway))))
   
-  p.comp <- ggplot(data=comSFDat) + geom_point(aes(x= factor(resource,levels=resourceLabel),y=pathway,size=-log(pval),color = overlap,shape=factor(YNSignificant,levels=c("Y","N")))) + xlab("") + ylab("") + 
+  p.comp <- ggplot(data=comSFDat) + geom_point(aes(x= factor(resource,levels=resourceLabel),y=pathway,size=-log(pval),color = NES,shape=factor(YNSignificant,levels=c("Y","N")))) + xlab("") + ylab("") + 
     labs(color="overlap",shape="padj<0.05",size="-log(pval)") + ggtitle(paste0("Enrichment test based on\n",patternHere, " database")) +
     scale_shape_manual(values=c(19,1),labels=c("Y","N")) +
     theme(plot.title=element_text(size = 8 ,face="bold",hjust=0.5),
