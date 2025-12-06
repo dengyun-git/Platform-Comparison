@@ -53,7 +53,7 @@ option_list <- list(
               help = "Path to output files.", metavar = "OUTPUT_PATH"),
   make_option(c("-m", "--intermediatePath"), type = "character", default = "/home/rstudio/workspace/Data Collection/oxf-qc2-als-mass-spectometry-wb-genial-hazelnut-7025/Data/intermediate/",
               help = "Path to store intermediate data during processing.", metavar = "MD_PATH"),
-  make_option(c("-s", "--codePath"), type = "character", default = "/home/rstudio/repos/",
+  make_option(c("-s", "--codePath"), type = "character", default = "/home/rstudio/repos/Technical Perspective/",
               help = "Path of codes", metavar = "CODE_PATH")
 )
 

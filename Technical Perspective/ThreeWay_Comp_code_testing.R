@@ -73,3 +73,57 @@ ComplexUpset::upset(
   name = "Proteins in Sets"  # Label for the UpSet plot
 ) + ggtitle("Mapping by Gene Cards")
 
+### Check the samples in MS but not in Olink, any small typo?
+shared_MS_not_Olink <- intersect(
+  rownames(MS_BEADdel_ProF),
+  rownames(MS_NONdel_ProF)
+)
+
+shared_MS_not_Olink <- setdiff(shared_MS_not_Olink, rownames(Olink_ProF))
+
+shared_MS_not_Olink
+
+for(item in shared_MS_not_Olink){
+  Temp <- gsub("C9C_", "", item)
+  print(paste0(item, ";", rownames(Olink_ProF)[grepl(Temp, rownames(Olink_ProF))]))
+}
+
+# Samples shared by Olink and MS_NONdel
+shared_Olink_NONdel <- intersect(
+  rownames(Olink_ProF),
+  rownames(MS_NONdel_ProF)
+)
+
+# Remove those that are in MS_BEADdel
+Olink_NONdel_not_BEADdel <- setdiff(
+  shared_Olink_NONdel,
+  rownames(MS_BEADdel_ProF)
+)
+
+Olink_NONdel_not_BEADdel
+
+for(item in Olink_NONdel_not_BEADdel){
+  Temp <- gsub("_CSF_.", "", item)
+  print(paste0(item, " exsit in ;", rownames(MS_BEADdel_ProF)[grepl(Temp, rownames(MS_BEADdel_ProF))]))
+}
+
+# Samples shared by Olink and MS_BEADdel
+shared_Olink_BEADdel <- intersect(
+  rownames(Olink_ProF),
+  rownames(MS_BEADdel_ProF)
+)
+
+# Remove those that are in MS_NONdel
+Olink_BEADdel_not_NONdel <- setdiff(
+  shared_Olink_BEADdel,
+  rownames(MS_NONdel_ProF)
+)
+
+Olink_BEADdel_not_NONdel
+
+# For each sample, search for similar IDs in MS_NONdel (optional check)
+for(item in Olink_BEADdel_not_NONdel){
+  Temp <- gsub("_CSF_.", "", item)
+  matched <- rownames(MS_NONdel_ProF)[grepl(Temp, rownames(MS_NONdel_ProF))]
+  print(paste0(item, " exist in ; ", paste(matched, collapse = ", ")))
+}
