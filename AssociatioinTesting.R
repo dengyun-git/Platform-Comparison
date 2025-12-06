@@ -13,7 +13,7 @@ library(patchwork)
 
 inputPath <- "/home/rstudio/workspace/Data Collection/"
 intermediatePath <- "/home/rstudio/workspace/Data Collection/intermediate/"
-outPath <- "/home/rstudio/workspace/Data Collection/AssociationTesting/"
+outPath <- "/home/rstudio/workspace/Data Collection/output_AssociationTesting/"
 
 source("/home/rstudio/repos/DE_functions_call.R")
 
@@ -331,15 +331,6 @@ summary_df
 # Enrichment Testing
 ######################## 
 ########################
-### Prepare genesets used for our enrichment test
-GOBPGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c5.go.bp.v2023.2.Hs.symbols.gmt"))
-GOMFGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c5.go.mf.v2023.2.Hs.symbols.gmt"))
-GOCCGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c5.go.cc.v2023.2.Hs.symbols.gmt"))
-REACTOMEGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c2.cp.reactome.v2023.2.Hs.symbols.gmt"))
-KEGGGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c2.cp.kegg_legacy.v2023.2.Hs.symbols.gmt"))
-BiocartaGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c2.cp.biocarta.v2023.2.Hs.symbols.gmt"))
-WikiPathwaysGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c2.cp.wikipathways.v2023.2.Hs.symbols.gmt"))
-
 ### Ranking matrix calculation
 Ranks_Olink_AllVar <- Calculate_Ranking_Metric(paste0(outPath, "Olink_logistic_RandomEffectFALSE_result_tbl_p.csv"), 
                                                paste0(outPath, "Olink_linear_RandomEffectFALSE_result_tbl_p.csv"),
@@ -356,46 +347,106 @@ Ranks_MS_NONdel_AllVar <- Calculate_Ranking_Metric(paste0(outPath, "NONdel_logis
                                                    paste0(outPath, "NONdel_logistic_RandomEffectFALSE_result_tbl_EffectSize.csv"),
                                                    paste0(outPath, "NONdel_linear_RandomEffectFALSE_result_tbl_EffectSize.csv"))
 
+### Prepare genesets used for our enrichment test
+GOBPGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c5.go.bp.v2023.2.Hs.symbols.gmt"))
+GOMFGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c5.go.mf.v2023.2.Hs.symbols.gmt"))
+GOCCGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c5.go.cc.v2023.2.Hs.symbols.gmt"))
+REACTOMEGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c2.cp.reactome.v2023.2.Hs.symbols.gmt"))
+KEGGGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c2.cp.kegg_legacy.v2023.2.Hs.symbols.gmt"))
+BiocartaGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c2.cp.biocarta.v2023.2.Hs.symbols.gmt"))
+WikiPathwaysGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c2.cp.wikipathways.v2023.2.Hs.symbols.gmt"))
 
 pathBaseList <- c("GOBP","GOMF","GOCC","REACTOME","KEGG","Biocarta","WikiPathways") ### user define which databases to look into
-platformList <- c("Olink", "MS_BEADdel", "MS_NONdel")
-
-SigPath_List <- lapply(varAll_List, function(x) {
-  platformContainer <- vector("list", length = 3)
-})
-
-platformContainer <- lapply(platformList, function(x) {
-  GeneSetsContainer <- vector("list", length = pathBaseList)
-})
 
 GeneSetList <- sapply(paste0(pathBaseList,"GeneSets"),function(x){get(x)})
 
-### For each clinical variable, within each platform, based on each pathway database, perform the pathway enrichment testing
-for(ClinicVar in varAll_List){
+platformList <- c("Olink", "MS_BEADdel", "MS_NONdel")
+
+SigPath_List <- lapply(varAll_List, function(v) {
   
-  for(platform in platformList){
+  # For each variable, create platform layer
+  platformContainer <- lapply(platformList, function(p) {
     
-    ranks <- get(paste0("Ranks_", platform, "_AllVar"))[ClinicVar]
+    # For each platform, create gene set layer
+    geneSetContainer <- setNames(
+      vector("list", length(pathBaseList)),
+      pathBaseList
+    )
     
-    if(sign(min(ranks))*sign(max(ranks)) == -1){whichType="std"
-    }else if(min(ranks)>0){whichType = "pos"
-    }else{whichType = "neg"}
+    return(geneSetContainer)
+  })
+  
+  # Name platforms inside this variable
+  platformContainer <- setNames(platformContainer, platformList)
+  
+  return(platformContainer)
+})
+
+# Name the top layer with variable names
+SigPath_List <- setNames(SigPath_List, varAll_List)
+
+for (ClinicVar in varAll_List) {
+  
+  for (platform in platformList) {
     
-    for(GScont in seq_along(GeneSetList)){
-      GeneSetsX <- GeneSetList[[GScont]]
-      fgseaPath <- fgsea::fgsea(pathways = GeneSetsX, stats=ranks,scoreType = whichType, eps = 0.0, minSize=10, maxSize=1000) 
-      
-      fwrite(fgseaPath, file=paste0(intermediatePath,pathBase[GScont],".",platform,".", ClinicVar,".txt"), sep="\t", sep2=c("", " ", ""))
+    # Extract numeric ranking vector
+    ranks_M <- get(paste0("Ranks_", platform, "_AllVar"))
+    ranks <- ranks_M[,ClinicVar]
+    names(ranks) <- rownames(ranks_M)
+    ranks <- ranks[which(!is.na(ranks))]
+    
+    # Determine scoreType
+    if (sign(min(ranks)) * sign(max(ranks)) == -1) {
+      whichType <- "std"
+    } else if (min(ranks) > 0) {
+      whichType <- "pos"
+    } else {
+      whichType <- "neg"
     }
-    SigPath_List[[ClinicVar]][[platform]][[names(pathBaseList)[GScont]]] <- fgseaPath
+    
+    for (GScont in seq_along(GeneSetList)) {
+      
+      GeneSetsX <- GeneSetList[[GScont]]
+      
+      fgseaPath <- fgsea::fgsea(
+        pathways = GeneSetsX,
+        stats = ranks,
+        scoreType = whichType,
+        eps = 0.0,
+        minSize = 10,
+        maxSize = 1000
+      )
+      
+      # write result table
+      fwrite(
+        fgseaPath,
+        file = paste0(
+          intermediatePath,
+          pathBaseList[GScont], "_", ClinicVar, "_", platform, ".txt"
+        ),
+        sep = "\t",
+        sep2 = c("", " ", "")
+      )
+      
+      sig_fgseaPath <- fgseaPath %>%
+        filter(padj < 0.05) %>%
+        arrange(padj)
+      
+      # save into SigPath_List (IMPORTANT FIX: moved inside loop!)
+      SigPath_List[[ClinicVar]][[platform]][[pathBaseList[GScont]]] <- sig_fgseaPath
+    }
   }
 }
 
 ### Bubble plot to show the significantly enriched pathways
-files <- paste0(pathBase,".rdata")
-
-for (i in 1:length(pathBase)){
-  makeBubble(intermediatePath, pathBase[i], 5, 5, files[i])
+Enrich_Rdat_files <- paste0(pathBaseList, "_", varAll_List,".rdata")
+fileCt <- 1
+for (pathBase in pathBaseList){
+  for(ClinicVar in varAll_List){
+    patternHere <- paste0(pathBase, "_", ClinicVar)
+    makeBubble(intermediatePath, patternHere, 5, 5, Enrich_Rdat_files[i])
+    fileCt <- fileCt + 1
+  }
 }
 
 dev.off()

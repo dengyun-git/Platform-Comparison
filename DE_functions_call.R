@@ -299,15 +299,31 @@ ViewClinincalVar <- function(cat_vars, num_vars, Clinic_MetaF_Here){
 #---------------------------------------------------------------------
 # Function to calculate ranking metrics for enrichment testing
 Calculate_Ranking_Metric <- function(file1, file2, file3, file4){
-  ### Load P value file
-  logit_P_DataFrame <- read.csv(file1, row.names = 1)
-  lin_P_DataFrame <- read.csv(file2, row.names = 1)
-  P_DataFrame <- cbind(logit_P_DataFrame, lin_P_DataFrame[rownames(logit_P_DataFrame),])
+  read_df <- function(file) {
+    df <- read.csv(file, check.names = FALSE)
+    rownames(df) <- make.unique(df[,1])   # for duplicate protein names for MS
+    df <- df[ , -1, drop = FALSE]        
+    return(df)
+  }
   
-  ### Load effect size file
-  logit_EF_DataFrame <- read.csv(file3, row.names = 1)
-  lin_EF_DataFrame <- read.csv(file4, row.names = 1)
-  EF_DataFrame <- cbind(logit_EF_DataFrame, lin_EF_DataFrame[rownames(logit_EF_DataFrame),])
+  ### Load P-value files
+  logit_P_DataFrame <- read_df(file1)
+  lin_P_DataFrame   <- read_df(file2)
+  
+  ### Ensure both tables share the same protein order
+  P_DataFrame <- cbind(
+    logit_P_DataFrame,
+    lin_P_DataFrame[rownames(logit_P_DataFrame), , drop = FALSE]
+  )
+  
+  ### Load effect-size files
+  logit_EF_DataFrame <- read_df(file3)
+  lin_EF_DataFrame   <- read_df(file4)
+  
+  EF_DataFrame <- cbind(
+    logit_EF_DataFrame,
+    lin_EF_DataFrame[rownames(logit_EF_DataFrame), , drop = FALSE]
+  )
   
   ### Calculate ranking matrix per clinical variable: -log(p) * sign(effect size)
   Rank_Matrix_AllVar <- (-log(P_DataFrame)) * EF_DataFrame
@@ -317,4 +333,80 @@ Calculate_Ranking_Metric <- function(file1, file2, file3, file4){
   # Rank_Matrix_AllVar[10,2] == (-log(P_DataFrame[10,2])) * EF_DataFrame[10, 2]
   
   return(Rank_Matrix_AllVar)
+}
+
+#_____________________________________________________________________________________________________________________________________
+# Function to make bubble plots for pathway enrichment tests
+makeBubble <- function(pathHere, patternHere, sizeHere1,sizeHere2, saveMessage){
+  
+  ### pay attention to the fileList order and resourceLabel order
+  fileList <- list.files(path=pathHere, paste0(patternHere, ".*\\.txt$"))
+  resourceLabel <- str_replace(fileList, ".*_(.*)\\.txt$", "\\1")
+  
+  ### read the data frame from each file.
+  thisC = 1
+  comSFDat=c()
+  pThresh = 0.05
+  for(fileSg in fileList){
+    comSF <- read.csv(paste0(pathHere,fileSg),sep="\t",header=TRUE)[,c("pathway","pval","padj","overlap","size","overlapGenes")] 
+    comSF <- comSF[which(comSF$padj<pThresh),]
+    YNSignificant <- ifelse(comSF$padj<0.05,"Y","N")
+    comSF<- cbind(comSF,YNSignificant)
+    colnames(comSF)[ncol(comSF)] <-"YNSignificant"
+    comSF <- comSF[order(comSF$padj),]
+    
+    addCol <- matrix(rep(resourceLabel[thisC],nrow(comSF)),ncol=1)
+    comSF <-cbind(addCol,comSF)
+    colnames(comSF)[1] <- "resource"
+    
+    comSF <- comSF[which(!is.na(comSF$pval)),] 
+    
+    comSFDat <- rbind(comSFDat,comSF)
+    
+    thisC = thisC+1
+    remove(comSF)
+  }
+  
+  comSFDat %<>% mutate(pathway = tolower(gsub("_", " ", gsub("^[^_]*_", "", pathway))))
+  
+  p.comp <- ggplot(data=comSFDat) + geom_point(aes(x= factor(resource,levels=resourceLabel),y=pathway,size=-log(pval),color = overlap,shape=factor(YNSignificant,levels=c("Y","N")))) + xlab("") + ylab("") + 
+    labs(color="overlap",shape="padj<0.05",size="-log(pval)") + ggtitle(paste0("Enrichment test based on\n",patternHere, " database")) +
+    scale_shape_manual(values=c(19,1),labels=c("Y","N")) +
+    theme(plot.title=element_text(size = 8 ,face="bold",hjust=0.5),
+          axis.text.x = element_text(angle = 20, vjust = 1, hjust=1,size= sizeHere1,face="bold"),axis.text.y = element_text(size = sizeHere2,face="bold"), 
+          panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+          panel.background = element_blank(), axis.line = element_line(colour = "black"))  
+  
+  
+  save(comSFDat,file=paste0(pathHere,saveMessage))
+  
+  print(p.comp)
+  return(p.comp)
+}
+
+#_____________________________________________________________________________________________________________________________________
+# Function to generate interactive enrichment testing plot
+generate_plot <- function(file_path, title) {
+  load(file = file_path)
+  
+  plot_ly(comSFDat,
+          type = 'scatter',
+          mode = 'markers',
+          x = ~ factor(resource),
+          y = ~pathway,       
+          marker = list(size = ~-log(pval), sizeref = 0.3, sizemode = 'area',
+                        color = ~overlap / size, color = seq(0, 39),
+                        sizebar = list(title = "-log(pvalue)"),
+                        colorbar = list(title = 'Protein Ratio'),
+                        colorscale = 'Viridis',
+                        reversescale = TRUE),
+          hovertemplate = paste(
+            "<b>pathway: %{y}</b><br><br>",
+            "<b>module %{x}</b><br><br>",
+            "Proteins Driving Pathway Significance:\n %{text}",
+            "<extra></extra>")
+  ) %>% layout(title = title,
+               xaxis = list(title = "Coexpression Modules", tickangle = -45, tickfont = list(size = 12, family = "Arial Black")),
+               yaxis = list(title = "", tickfont = list(size = 9, family = "Arial")),
+               margin = list(b = 100))
 }
