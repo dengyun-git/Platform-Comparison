@@ -80,12 +80,23 @@ extract_logFC <- function(mergedF, ProF_matchClinic, varA, varB) {
 boxcoxTranform <- function(VariableHere, maxScore) {
   # Adjust the variable by subtracting from maxScore to make all values positive
   adjustedVariable <<- maxScore - VariableHere
+  
   zeroID <- which(adjustedVariable <= 0)
   
   # Handle zero values by adding a small positive constant
   if (length(zeroID) != 0) {
-    adjustedVariable[zeroID] <<- runif(length(zeroID), min = 0.001, max = 0.01) * sort(adjustedVariable)[2]
+    pos_vals <- adjustedVariable[adjustedVariable > 0]
+    if (length(pos_vals) >= 2) {
+      adjustedVariable[zeroID] <<- runif(length(zeroID), min = 0.001, max = 0.01) * sort(pos_vals)[2]
+    } else if (length(pos_vals) == 1) {
+      adjustedVariable[zeroID] <<- runif(length(zeroID), min = 0.001, max = 0.01) * pos_vals
+    } else {
+      adjustedVariable[zeroID] <<- 0.001 * maxScore
+    }
   }
+  
+  # Ensure strictly positive before Box-Cox
+  adjustedVariable[adjustedVariable <= 0] <<- 0.001 * maxScore
   
   # Perform Box-Cox transformation
   b <- boxcox(lm(adjustedVariable ~ 1))
@@ -94,6 +105,8 @@ boxcoxTranform <- function(VariableHere, maxScore) {
   lambda <- b$x[which.max(b$y)]
   new_VariableHere <- (adjustedVariable ^ lambda - 1) / lambda
   
+  remove(adjustedVariable)
+  
   return(new_VariableHere)
 }
 
@@ -101,46 +114,41 @@ boxcoxTranform <- function(VariableHere, maxScore) {
 # Function to generate DE results table using GLM
 get_DE_Pvalue_Table_GLM <- function(ProExpF, Merged, covariateList, outPath, whichPlatform, regMethod, varList1, use_random_YN){
   
+  # ---------- Helper function to extract effect ----------
   get_effect <- function(fit, protein_var) {
-    # Safe version: returns NA if protein_var not in model coefficients
     coef_value <- NA
     
-    if("merMod" %in% class(fit)) {        # lmer, glmer
+    if ("merMod" %in% class(fit)) {        # lmer, glmer
       coef_names <- names(fixef(fit))
-      if(protein_var %in% coef_names) {
-        coef_value <- fixef(fit)[protein_var]
-      }
+      if (protein_var %in% coef_names) coef_value <- fixef(fit)[protein_var]
       
-    } else if("clmm" %in% class(fit)) {   # ordinal mixed model
+    } else if ("clmm" %in% class(fit)) {   # ordinal mixed model
       coef_names <- names(fixef(fit))
-      if(protein_var %in% coef_names) {
-        coef_value <- fixef(fit)[protein_var]
-      }
+      if (protein_var %in% coef_names) coef_value <- fixef(fit)[protein_var]
       
-    } else {                              # lm, glm, polr, multinom
+    } else {                               # lm, glm, polr, multinom
       coef_names <- names(coef(fit))
-      if(protein_var %in% coef_names) {
-        coef_value <- coef(fit)[protein_var]
-      }
+      if (protein_var %in% coef_names) coef_value <- coef(fit)[protein_var]
     }
     
-    # Return the coefficient (or NA if not found)
     return(coef_value)
   }
   
   # ---------- Initialize result tables ----------
-  result_tbl_EffectSize <- result_tbl_adj <- result_tbl_p <-
-    matrix(NA, nrow=ncol(ProExpF), ncol=length(varList1))
+  n_prot <- ncol(ProExpF)
+  n_vars <- length(varList1)
+  
+  result_tbl_EffectSize <- result_tbl_adj <- result_tbl_p <- 
+    matrix(NA, nrow = n_prot, ncol = n_vars)
   
   rownames(result_tbl_EffectSize) <- rownames(result_tbl_adj) <- rownames(result_tbl_p) <- colnames(ProExpF)
   colnames(result_tbl_EffectSize) <- colnames(result_tbl_adj) <- colnames(result_tbl_p) <- varList1
   
-  # ===============================================================
   # ---------- Loop over main phenotype variables ----------
-  # ===============================================================
-  for(mainVar in varList1){
+  for (mainVar in varList1) {
     
-    if(mainVar %in% c("ALSvsHC","DCvsHC","ALSvsDC","C9vsNonC9","BODY_MASS_INDEX")){
+    # Determine covariates (customize logic if needed)
+    if (mainVar %in% c("ALSvsHC", "DCvsHC", "ALSvsDC", "C9vsNonC9", "BODY_MASS_INDEX")) {
       covariates <- covariateList[c(2,3)]
     } else {
       covariates <- covariateList[c(1,3)]
@@ -148,112 +156,165 @@ get_DE_Pvalue_Table_GLM <- function(ProExpF, Merged, covariateList, outPath, whi
     
     cat("Running regression for predictor:", mainVar, "\n")
     
-    # ---------- Remove samples with NA ----------
+    # ---------- Subset samples with valid values ----------
     keepID <- lapply(c(mainVar, covariates), function(v){
       which(!is.na(Merged[, v]) & Merged[, v] != "" & Merged[, v] != "NA")
     })
-    Merged_Here <- Merged[Reduce(intersect, keepID), ]
+    keepID_final <- Reduce(intersect, keepID)
+    if(length(keepID_final) < 3){  # too few samples to fit
+      warning(paste("Too few samples for", mainVar, "- skipping"))
+      next
+    }
+    Merged_Here <- Merged[keepID_final, ]
     
-    # =====================================================
-    # ---------- LOOP over PROTEINS ----------
-    # =====================================================
-    for(i in seq_along(colnames(ProExpF))){
+    # ---------- Loop over proteins ----------
+    for (i in seq_len(ncol(ProExpF))) {
       protein_var <- colnames(ProExpF)[i]
+      covar_str <- paste(covariates, collapse = "+")
       
-      covar_str <- paste(covariates, collapse="+")
-      
-      if(use_random_YN){
-        full_formula <- as.formula(
-          paste0(mainVar, " ~ `", protein_var, "` + ", covar_str, " + (1|SubjectID_Random)")
-        )
-        null_formula <- as.formula(
-          paste0(mainVar, " ~ ", covar_str, " + (1|SubjectID_Random)")
-        )
+      # ---------- Build formulas ----------
+      if (use_random_YN) {
+        full_formula <- as.formula(paste0(mainVar, " ~ `", protein_var, "` + ", covar_str, " + (1|SubjectID_Random)"))
+        null_formula <- as.formula(paste0(mainVar, " ~ ", covar_str, " + (1|SubjectID_Random)"))
       } else {
-        full_formula <- as.formula(
-          paste0(mainVar, " ~ `", protein_var, "` + ", covar_str)
-        )
-        null_formula <- as.formula(
-          paste0(mainVar, " ~ ", covar_str)
-        )
+        full_formula <- as.formula(paste0(mainVar, " ~ `", protein_var, "` + ", covar_str))
+        null_formula <- as.formula(paste0(mainVar, " ~ ", covar_str))
       }
       
-      # =============== LINEAR MIXED MODEL ===============
-      if(regMethod == "linear"){
-        if(use_random_YN){
-          fit <- lmer(full_formula, data=Merged_Here, REML=FALSE)
-          null_fit <- lmer(null_formula, data=Merged_Here, REML=FALSE)
-        } else {
-          fit <- lm(full_formula, data=Merged_Here)
-          null_fit <- lm(null_formula, data=Merged_Here)
+      # ---------- Regression ----------
+      tryCatch({
+        if (regMethod == "linear") {
+          fit <- if (use_random_YN) lmer(full_formula, data = Merged_Here, REML = FALSE) else lm(full_formula, data = Merged_Here)
+          null_fit <- if (use_random_YN) lmer(null_formula, data = Merged_Here, REML = FALSE) else lm(null_formula, data = Merged_Here)
+          
+          LRT <- anova(null_fit, fit)
+          result_tbl_p[i, mainVar] <- LRT$`Pr(>F)`[2]
+          result_tbl_EffectSize[i, mainVar] <- get_effect(fit, protein_var)
+          
+        } else if (regMethod == "logistic") {
+          fit <- if (use_random_YN) {
+            glmer(full_formula, data = Merged_Here, family = binomial, control = glmerControl(optimizer = "bobyqa"))
+          } else {
+            glm(full_formula, data = Merged_Here, family = binomial)
+          }
+          null_fit <- if (use_random_YN) {
+            glmer(null_formula, data = Merged_Here, family = binomial, control = glmerControl(optimizer = "bobyqa"))
+          } else {
+            glm(null_formula, data = Merged_Here, family = binomial)
+          }
+          
+          LRT <- tryCatch(anova(null_fit, fit, test = "LRT"), error = function(e) NA)
+          result_tbl_p[i, mainVar] <-LRT$`Pr(>Chi)`[2] 
+          result_tbl_EffectSize[i, mainVar] <- get_effect(fit, protein_var)
+          
+        } else if (regMethod == "multinomial") {
+          fit <- multinom(full_formula, data = Merged_Here, trace = FALSE)
+          null_fit <- multinom(null_formula, data = Merged_Here, trace = FALSE)
+          LRT <- 2 * (logLik(fit) - logLik(null_fit))
+          df <- attr(logLik(fit), "df") - attr(logLik(null_fit), "df")
+          result_tbl_p[i, mainVar] <- pchisq(LRT, df = df, lower.tail = FALSE)
+          result_tbl_EffectSize[i, mainVar] <- get_effect(fit, protein_var)
+          
+        } else if (regMethod == "ordinal") {
+          fit <- if (use_random_YN) clmm(full_formula, data = Merged_Here, Hess = TRUE) else polr(full_formula, data = Merged_Here, Hess = TRUE)
+          null_fit <- if (use_random_YN) clmm(null_formula, data = Merged_Here, Hess = TRUE) else polr(null_formula, data = Merged_Here, Hess = TRUE)
+          
+          LRT <- anova(null_fit, fit)
+          result_tbl_p[i, mainVar] <- ifelse(length(LRT$`Pr(>Chisq)`) >= 2, LRT$`Pr(>Chisq)`[2], NA)
+          result_tbl_EffectSize[i, mainVar] <- get_effect(fit, protein_var)
         }
-        
-        # LRT
-        LRT <- anova(null_fit, fit)
-        result_tbl_p[i, mainVar] <- LRT$`Pr(>Chisq)`[2]
-        result_tbl_EffectSize[i, mainVar] <- get_effect(fit, protein_var)
-      }
+      }, error = function(e) {
+        warning(paste("Error in", mainVar, "protein", protein_var, ":", e$message))
+      })
       
-      # =============== LOGISTIC MIXED MODEL ===============
-      else if(regMethod == "logistic"){
-        
-        if(use_random_YN){
-          fit <- glmer(full_formula, data=Merged_Here, family=binomial,
-                       control=glmerControl(optimizer="bobyqa"))
-          null_fit <- glmer(null_formula, data=Merged_Here, family=binomial,
-                            control=glmerControl(optimizer="bobyqa"))
-        } else {
-          fit <- glm(full_formula, data=Merged_Here, family=binomial)
-          null_fit <- glm(null_formula, data=Merged_Here, family=binomial)
-        }
-        
-        LRT <- anova(null_fit, fit, test="LRT")
-        result_tbl_p[i, mainVar] <- LRT$`Pr(>Chi)`[2]
-        result_tbl_EffectSize[i, mainVar] <- get_effect(fit, protein_var)
-      }
-      
-      # =============== MULTINOMIAL — NO RANDOM EFFECTS AVAILABLE ===============
-      else if(regMethod == "multinomial"){
-        
-        fit <- multinom(full_formula, data=Merged_Here, trace=FALSE)
-        null_fit <- multinom(null_formula, data=Merged_Here, trace=FALSE)
-        
-        LRT <- 2 * (logLik(fit) - logLik(null_fit))
-        df <- attr(logLik(fit),"df") - attr(logLik(null_fit),"df")
-        pval <- pchisq(LRT, df=df, lower.tail=FALSE)
-        
-        result_tbl_p[i, mainVar] <- pval
-        
-        # average effect across categories
-        result_tbl_EffectSize[i, mainVar] <- get_effect(fit, protein_var)
-      }
-      
-      # =============== ORDINAL MIXED MODEL ===============
-      else if(regMethod == "ordinal"){
-        
-        if(use_random_YN){
-          fit <- clmm(full_formula, data=Merged_Here, Hess=TRUE)
-          null_fit <- clmm(null_formula, data=Merged_Here, Hess=TRUE)
-        } else {
-          fit <- polr(full_formula, data=Merged_Here, Hess=TRUE)
-          null_fit <- polr(null_formula, data=Merged_Here, Hess=TRUE)
-        }
-        
-        LRT <- anova(null_fit, fit)
-        result_tbl_p[i, mainVar] <- LRT$`Pr(>Chisq)`[2]
-        result_tbl_EffectSize[i, mainVar] <- get_effect(fit, protein_var)
-      }
     } # end protein loop
     
-    # -------------- BH correction for this variable --------------
-    result_tbl_adj[, mainVar] <- p.adjust(result_tbl_p[, mainVar], method="BH")
+    # ---------- BH correction ----------
+    result_tbl_adj[, mainVar] <- p.adjust(result_tbl_p[, mainVar], method = "BH")
     
-  } # end var loop
+  } # end variable loop
   
-  # save to files
+  # ---------- Save results ----------
   write.csv(result_tbl_p, paste0(outPath, whichPlatform, "_", regMethod, "_RandomEffect", use_random_YN, "_result_tbl_p.csv"))
   write.csv(result_tbl_EffectSize, paste0(outPath, whichPlatform, "_", regMethod, "_RandomEffect", use_random_YN, "_result_tbl_EffectSize.csv"))
   write.csv(result_tbl_adj, paste0(outPath, whichPlatform, "_", regMethod, "_RandomEffect", use_random_YN, "_result_tbl_adjp.csv"))
   
   return(result_tbl_adj)
+}
+
+
+#---------------------------------------------------------------------
+# Function to view distribution or composition of clinical variables
+ViewClinincalVar <- function(cat_vars, num_vars, Clinic_MetaF_Here){
+  # --- 1. Categorical variable plots ---
+  cat_plots <- lapply(cat_vars, function(var){
+    df <- Clinic_MetaF %>%
+      filter(!is.na(.data[[var]]), .data[[var]] != "")
+    
+    ggplot(df, aes_string(x = var)) +
+      geom_bar(fill = "#1f78b4", alpha = 0.7) +
+      theme_bw(base_size = 12) +
+      theme(
+        axis.text.x = element_text(size = 12, color = "black", angle = 20, hjust = 1),
+        axis.text.y = element_text(size = 12, color = "black"),
+        axis.title.x = element_text(size = 14, color = "black", face = "bold"),
+        axis.title.y = element_text(size = 14, color = "black", face = "bold"),
+        plot.title = element_blank()  # remove individual plot title
+      ) +
+      labs(x = var, y = "Count")
+  })
+  
+  names(cat_plots) <- cat_vars
+  
+  # --- 2. Numerical variable plots ---
+  num_plots <- lapply(num_vars, function(var){
+    df <- Clinic_MetaF %>%
+      filter(!is.na(.data[[var]]))
+    
+    ggplot(df, aes(x = .data[[var]])) +
+      geom_histogram(aes(y = ..density..), bins = 30, fill = "#33a02c", alpha = 0.6) +
+      geom_density(color = "red", linewidth = 1) +
+      theme_bw(base_size = 12) +
+      theme(
+        axis.text.x = element_text(size = 12, color = "black"),
+        axis.text.y = element_text(size = 12, color = "black"),
+        axis.title.x = element_text(size = 14, color = "black", face = "bold"),
+        axis.title.y = element_text(size = 14, color = "black", face = "bold"),
+        plot.title = element_blank()  # remove individual plot title
+      ) +
+      labs(x = var, y = "Density")
+  })
+  
+  names(num_plots) <- num_vars
+  
+  # --- 3. Combine all plots ---
+  all_plots <- c(cat_plots, num_plots)
+  
+  # Combine using patchwork (example: 3 columns)
+  combined_plot <- wrap_plots(all_plots, ncol = 4)
+  
+  return(combined_plot)
+}
+
+#---------------------------------------------------------------------
+# Function to calculate ranking metrics for enrichment testing
+Calculate_Ranking_Metric <- function(file1, file2, file3, file4){
+  ### Load P value file
+  logit_P_DataFrame <- read.csv(file1, row.names = 1)
+  lin_P_DataFrame <- read.csv(file2, row.names = 1)
+  P_DataFrame <- cbind(logit_P_DataFrame, lin_P_DataFrame[rownames(logit_P_DataFrame),])
+  
+  ### Load effect size file
+  logit_EF_DataFrame <- read.csv(file3, row.names = 1)
+  lin_EF_DataFrame <- read.csv(file4, row.names = 1)
+  EF_DataFrame <- cbind(logit_EF_DataFrame, lin_EF_DataFrame[rownames(logit_EF_DataFrame),])
+  
+  ### Calculate ranking matrix per clinical variable: -log(p) * sign(effect size)
+  Rank_Matrix_AllVar <- (-log(P_DataFrame)) * EF_DataFrame
+  
+  ### unit test here
+  # all(rownames(P_DataFrame) == rownames(EF_DataFrame))
+  # Rank_Matrix_AllVar[10,2] == (-log(P_DataFrame[10,2])) * EF_DataFrame[10, 2]
+  
+  return(Rank_Matrix_AllVar)
 }
