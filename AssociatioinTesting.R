@@ -14,7 +14,7 @@ library(plotly)
 
 
 inputPath <- "/home/rstudio/workspace/Data Collection/"
-intermediatePath <- "/home/rstudio/workspace/Data Collection/intermediate/"
+intermediatePath <- "/home/rstudio/workspace/Data Collection/intermediate_AssociationTesting/"
 outPath <- "/home/rstudio/workspace/Data Collection/output_AssociationTesting/"
 
 source("/home/rstudio/repos/DE_functions_call.R")
@@ -24,13 +24,13 @@ source("/home/rstudio/repos/DE_functions_call.R")
 # Load Data
 ################## 
 ################## 
-MS_BEADdel_ProF <- read.csv(paste0(inputPath, "oxf-qc2-als-mass-spectometry-wb-genial-hazelnut-7025/Data/output/BEADdel/SAMPLE/QCed_Frame.csv"), row.names = 1)[,-1]
+BEADdel_ProF <- read.csv(paste0(inputPath, "oxf-qc2-als-mass-spectometry-wb-genial-hazelnut-7025/Data/output/BEADdel/SAMPLE/QCed_Frame.csv"), row.names = 1)[,-1]
 DEL_ProMap <- read_excel(paste0(inputPath, "oxf-qc2-als-mass-spectometry-wb-genial-hazelnut-7025/Data/output/BEADdel/SAMPLE/BEADdepletions_ProteinMapping.xlsx"))
-colnames(MS_BEADdel_ProF) <- sapply(colnames(MS_BEADdel_ProF), function(x){DEL_ProMap[which(DEL_ProMap$Protein.Group==x),"Genes"]}) ### Using the Entrez Gene Naming scheme
+colnames(BEADdel_ProF) <- sapply(colnames(BEADdel_ProF), function(x){DEL_ProMap[which(DEL_ProMap$Protein.Group==x),"Genes"]}) ### Using the Entrez Gene Naming scheme
 
-MS_NONdel_ProF <- read.csv(paste0(inputPath, "oxf-qc2-als-mass-spectometry-wb-genial-hazelnut-7025/Data/output/NONdel/SAMPLE/QCed_Frame.csv"), row.names = 1)[,-1]
+NONdel_ProF <- read.csv(paste0(inputPath, "oxf-qc2-als-mass-spectometry-wb-genial-hazelnut-7025/Data/output/NONdel/SAMPLE/QCed_Frame.csv"), row.names = 1)[,-1]
 NON_ProMap <- read_excel(paste0(inputPath, "oxf-qc2-als-mass-spectometry-wb-genial-hazelnut-7025/Data/output/NONdel/SAMPLE/NONDEPLETED_ProteinMapping.xlsx"))
-colnames(MS_NONdel_ProF) <- sapply(colnames(MS_NONdel_ProF), function(x){NON_ProMap[which(NON_ProMap$Protein.Group==x),"Genes"]})
+colnames(NONdel_ProF) <- sapply(colnames(NONdel_ProF), function(x){NON_ProMap[which(NON_ProMap$Protein.Group==x),"Genes"]})
 
 Olink_ProF <- read.csv(paste0(inputPath, "Data-CSF/oxf-da28-opdc-als-multiple-cohorts-olink-csf/CSF_Customised_ProDataClean.csv"), sep= ",", row.names = 1)
 
@@ -110,19 +110,19 @@ Clinic_MetaF_All$ALSFRSR_GROSS_MOTOR <- boxcoxTranform(Clinic_MetaF_All$ALSFRSR_
 Clinic_MetaF <- Clinic_MetaF_All %>% filter(LONGITUDINAL_ENCOUNTER_NUMBER == 1) # Clinic_MetaF only contain the baseline samples
 
 ### Merge the clinical meta and proteomic data
-commonID1 <- intersect(rownames(MS_BEADdel_ProF), rownames(Clinic_MetaF))
-MS_BEADdel_merged <- cbind(
-  MS_BEADdel_ProF[commonID1, , drop=FALSE],
+commonID1 <- intersect(rownames(BEADdel_ProF), rownames(Clinic_MetaF))
+BEADdel_merged <- cbind(
+  BEADdel_ProF[commonID1, , drop=FALSE],
   Clinic_MetaF[commonID1, , drop=FALSE]
 )
-MS_BEADdel_ProF_matchClinic <- MS_BEADdel_ProF[commonID1, , drop = FALSE]
+BEADdel_ProF_matchClinic <- BEADdel_ProF[commonID1, , drop = FALSE]
 
-commonID2 <- intersect(rownames(MS_NONdel_ProF), rownames(Clinic_MetaF))
-MS_NONdel_merged <- cbind(
-  MS_NONdel_ProF[commonID2, , drop = FALSE],
+commonID2 <- intersect(rownames(NONdel_ProF), rownames(Clinic_MetaF))
+NONdel_merged <- cbind(
+  NONdel_ProF[commonID2, , drop = FALSE],
   Clinic_MetaF[commonID2, , drop = FALSE]
 )
-MS_NONdel_ProF_matchClinic <- MS_NONdel_ProF[commonID2, , drop = FALSE]
+NONdel_ProF_matchClinic <- NONdel_ProF[commonID2, , drop = FALSE]
 
 commonID3 <- intersect(rownames(Olink_ProF), rownames(Clinic_MetaF))
 Olink_merged <- cbind(
@@ -159,10 +159,11 @@ All_ClinicVar_View <- ViewClinincalVar(cat_vars, num_vars, Clinic_MetaF)
 
 Olink_ClinicVar_View <- ViewClinincalVar(cat_vars, num_vars, Olink_merged)
 
-MS_BEADdel_ClinicVar_View <- ViewClinincalVar(cat_vars, num_vars, MS_BEADdel_merged)
+BEADdel_ClinicVar_View <- ViewClinincalVar(cat_vars, num_vars, BEADdel_merged)
 
-MS_NONdel_ClinicVar_View <- ViewClinincalVar(cat_vars, num_vars, MS_NONdel_merged)
+NONdel_ClinicVar_View <- ViewClinincalVar(cat_vars, num_vars, NONdel_merged)
 
+save(All_ClinicVar_View, Olink_ClinicVar_View, BEADdel_ClinicVar_View, NONdel_ClinicVar_View, file = paste0(intermediatePath, "ClinicVar_View.Rdata"))
 ########################
 ########################
 # Association Testing
@@ -176,19 +177,19 @@ line_var <- c("ALSFRSR_FINE_MOTOR", "ALSFRSR_GROSS_MOTOR", "ALSFRSR_RATE", "ECAS
 varList_Conf <- c("AGE_AT_SYMPTOM_ONSET", "AGE_AT_SAMPLING","GENDER", "COHORT")
 varAll_List <- c(logi_vars, line_var)
 
-result_tbl_adj_BEADdel_logi <- get_DE_Pvalue_Table_GLM(ProExpF = MS_BEADdel_ProF_matchClinic, 
-                                                       Merged = MS_BEADdel_merged, 
+result_tbl_adj_BEADdel_logi <- get_DE_Pvalue_Table_GLM(ProExpF = BEADdel_ProF_matchClinic, 
+                                                       Merged = BEADdel_merged, 
                                                        covariateList = varList_Conf, 
-                                                       outPath = "/home/rstudio/workspace/Data Collection/intermediate/", 
+                                                       outPath = intermediatePath, 
                                                        whichPlatform = "BEADdel", 
                                                        regMethod = "logistic",
                                                        varList1 = logi_vars,
                                                        use_random_YN = FALSE)
 
-result_tbl_adj_NONdel_logi <- get_DE_Pvalue_Table_GLM(ProExpF = MS_NONdel_ProF_matchClinic, 
-                                                      Merged = MS_NONdel_merged, 
+result_tbl_adj_NONdel_logi <- get_DE_Pvalue_Table_GLM(ProExpF = NONdel_ProF_matchClinic, 
+                                                      Merged = NONdel_merged, 
                                                       covariateList = varList_Conf, 
-                                                      outPath = "/home/rstudio/workspace/Data Collection/intermediate/", 
+                                                      outPath = intermediatePath, 
                                                       whichPlatform = "NONdel", 
                                                       regMethod = "logistic",
                                                       varList1 = logi_vars,
@@ -197,7 +198,7 @@ result_tbl_adj_NONdel_logi <- get_DE_Pvalue_Table_GLM(ProExpF = MS_NONdel_ProF_m
 result_tbl_adj_Olink_logi <- get_DE_Pvalue_Table_GLM(ProExpF = Olink_ProF_matchClinic, 
                                                      Merged = Olink_merged, 
                                                      covariateList = varList_Conf, 
-                                                     outPath = "/home/rstudio/workspace/Data Collection/intermediate/", 
+                                                     outPath = intermediatePath, 
                                                      whichPlatform = "Olink", 
                                                      regMethod = "logistic",
                                                      varList1 = logi_vars,
@@ -207,19 +208,19 @@ result_tbl_adj_Olink_logi <- get_DE_Pvalue_Table_GLM(ProExpF = Olink_ProF_matchC
 # ---------------------
 # Linear Regression
 # ---------------------
-result_tbl_adj_BEADdel_lin <- get_DE_Pvalue_Table_GLM(ProExpF = MS_BEADdel_ProF_matchClinic, 
-                                                      Merged = MS_BEADdel_merged, 
+result_tbl_adj_BEADdel_lin <- get_DE_Pvalue_Table_GLM(ProExpF = BEADdel_ProF_matchClinic, 
+                                                      Merged = BEADdel_merged, 
                                                       covariateList = varList_Conf, 
-                                                      outPath = "/home/rstudio/workspace/Data Collection/intermediate/", 
+                                                      outPath = intermediatePath, 
                                                       whichPlatform = "BEADdel", 
                                                       regMethod = "linear",
                                                       varList1 = line_var,
                                                       use_random_YN = FALSE)
 
-result_tbl_adj_NONdel_lin <- get_DE_Pvalue_Table_GLM(ProExpF = MS_NONdel_ProF_matchClinic, 
-                                                     Merged = MS_NONdel_merged, 
+result_tbl_adj_NONdel_lin <- get_DE_Pvalue_Table_GLM(ProExpF = NONdel_ProF_matchClinic, 
+                                                     Merged = NONdel_merged, 
                                                      covariateList = varList_Conf, 
-                                                     outPath = "/home/rstudio/workspace/Data Collection/intermediate/", 
+                                                     outPath = intermediatePath, 
                                                      whichPlatform = "NONdel", 
                                                      regMethod = "linear",
                                                      varList1 = line_var,
@@ -228,7 +229,7 @@ result_tbl_adj_NONdel_lin <- get_DE_Pvalue_Table_GLM(ProExpF = MS_NONdel_ProF_ma
 result_tbl_adj_Olink_lin <- get_DE_Pvalue_Table_GLM(ProExpF = Olink_ProF_matchClinic, 
                                                     Merged = Olink_merged, 
                                                     covariateList = varList_Conf, 
-                                                    outPath = "/home/rstudio/workspace/Data Collection/intermediate/", 
+                                                    outPath = intermediatePath, 
                                                     whichPlatform = "Olink", 
                                                     regMethod = "linear",
                                                     varList1 = line_var,
@@ -389,6 +390,8 @@ write.csv(result_tbl_adj_NONdel, file = paste0(outPath, "NONdel_adjp.csv"))
 # Vocano Plot
 ######################## 
 ########################
+platformList <- c("Olink", "BEADdel", "NONdel")
+
 Olink_eff <- read.csv(paste0(outPath, "Olink_EffectSize.csv"), row.names = 1)
 BEADdel_eff <- read.csv(paste0(outPath, "BEADdel_EffectSize.csv"), row.names = 1)
 NONdel_eff <- read.csv(paste0(outPath, "NONdel_EffectSize.csv"), row.names = 1)
@@ -457,10 +460,10 @@ save(plotly_volcano_list, file = paste0(intermediatePath, "plotly_volcano_list.r
 Ranks_Olink_AllVar <- Calculate_Ranking_Metric(paste0(outPath, "Olink_pvalue.csv"), 
                                                paste0(outPath, "Olink_EffectSize.csv"))
 
-Ranks_MSBEADdel_AllVar <- Calculate_Ranking_Metric(paste0(outPath, "BEADdel_pvalue.csv"), 
+Ranks_BEADdel_AllVar <- Calculate_Ranking_Metric(paste0(outPath, "BEADdel_pvalue.csv"), 
                                                   paste0(outPath, "BEADdel_EffectSize.csv"))
 
-Ranks_MSNONdel_AllVar <- Calculate_Ranking_Metric(paste0(outPath, "NONdel_pvalue.csv"), 
+Ranks_NONdel_AllVar <- Calculate_Ranking_Metric(paste0(outPath, "NONdel_pvalue.csv"), 
                                                   paste0(outPath, "NONdel_EffectSize.csv"))
 
 ### Prepare genesets used for our enrichment test
@@ -475,8 +478,6 @@ WikiPathwaysGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c2.c
 pathBaseList <- c("GOBP","GOMF","GOCC","REACTOME","KEGG","Biocarta","WikiPathways") 
 
 GeneSetList <- sapply(paste0(pathBaseList,"GeneSets"),function(x){get(x)})
-
-platformList <- c("Olink", "BEADdel", "NONdel")
 
 SigPath_List <- lapply(varAll_List, function(v) {
   

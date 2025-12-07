@@ -8,10 +8,13 @@ library(lme4)
 library(nnet)
 library(MASS)
 library(ordinal)
+library(patchwork)
+library(ggrepel)
+library(plotly)
 
 inputPath <- "/home/rstudio/workspace/Data Collection/"
-intermediatePath <- "/home/rstudio/workspace/Data Collection/intermediate/"
-outPath <- "/home/rstudio/workspace/Data Collection/output_baseline/"
+intermediatePath <- "/home/rstudio/workspace/Data Collection/intermediate_DifferentialExpression/"
+outPath <- "/home/rstudio/workspace/Data Collection/output_DifferentialExpression/"
 
 source("/home/rstudio/repos/DE_functions_call.R")
 
@@ -20,13 +23,13 @@ source("/home/rstudio/repos/DE_functions_call.R")
 # Load Data
 ################## 
 ################## 
-MS_BEADdel_ProF <- read.csv(paste0(inputPath, "oxf-qc2-als-mass-spectometry-wb-genial-hazelnut-7025/Data/output/BEADdel/SAMPLE/QCed_Frame.csv"), row.names = 1)[,-1]
+BEADdel_ProF <- read.csv(paste0(inputPath, "oxf-qc2-als-mass-spectometry-wb-genial-hazelnut-7025/Data/output/BEADdel/SAMPLE/QCed_Frame.csv"), row.names = 1)[,-1]
 DEL_ProMap <- read_excel(paste0(inputPath, "oxf-qc2-als-mass-spectometry-wb-genial-hazelnut-7025/Data/output/BEADdel/SAMPLE/BEADdepletions_ProteinMapping.xlsx"))
-colnames(MS_BEADdel_ProF) <- sapply(colnames(MS_BEADdel_ProF), function(x){DEL_ProMap[which(DEL_ProMap$Protein.Group==x),"Genes"]}) ### Using the Entrez Gene Naming scheme
+colnames(BEADdel_ProF) <- sapply(colnames(BEADdel_ProF), function(x){DEL_ProMap[which(DEL_ProMap$Protein.Group==x),"Genes"]}) ### Using the Entrez Gene Naming scheme
 
-MS_NONdel_ProF <- read.csv(paste0(inputPath, "oxf-qc2-als-mass-spectometry-wb-genial-hazelnut-7025/Data/output/NONdel/SAMPLE/QCed_Frame.csv"), row.names = 1)[,-1]
+NONdel_ProF <- read.csv(paste0(inputPath, "oxf-qc2-als-mass-spectometry-wb-genial-hazelnut-7025/Data/output/NONdel/SAMPLE/QCed_Frame.csv"), row.names = 1)[,-1]
 NON_ProMap <- read_excel(paste0(inputPath, "oxf-qc2-als-mass-spectometry-wb-genial-hazelnut-7025/Data/output/NONdel/SAMPLE/NONDEPLETED_ProteinMapping.xlsx"))
-colnames(MS_NONdel_ProF) <- sapply(colnames(MS_NONdel_ProF), function(x){NON_ProMap[which(NON_ProMap$Protein.Group==x),"Genes"]})
+colnames(NONdel_ProF) <- sapply(colnames(NONdel_ProF), function(x){NON_ProMap[which(NON_ProMap$Protein.Group==x),"Genes"]})
 
 Olink_ProF <- read.csv(paste0(inputPath, "Data-CSF/oxf-da28-opdc-als-multiple-cohorts-olink-csf/CSF_Customised_ProDataClean.csv"), sep= ",", row.names = 1)
 
@@ -74,40 +77,51 @@ Clinic_MetaF_All %<>%
     # Transformations
     ALSFRSR_RATE = log(ALSFRSR_RATE),
     ECAS_SCORE = boxcoxTranform(ECAS_SCORE, 134),
+    ALSFRSR_FINE_MOTOR = boxcoxTranform(ALSFRSR_FINE_MOTOR, 12),
+    ALSFRSR_GROSS_MOTOR = boxcoxTranform(ALSFRSR_GROSS_MOTOR, 12),
     
     # SubjectID for random effect regression
     SubjectID_Random = CSF_OLINK_MANIFEST,
     
     # Factor conversions
     GROUP = factor(GROUP),
-    ALSvsHC = factor(ALSvsHC),
-    ALSvsDC = factor(ALSvsDC),
-    DCvsHC = factor(DCvsHC),
-    GENDER = factor(GENDER),
+    ALSvsHC = relevel(factor(ALSvsHC), ref = "HEALTHY CONTROL"),
+    ALSvsDC = relevel(factor(ALSvsDC), ref = "DISEASE CONTROL"),
+    DCvsHC  = relevel(factor(DCvsHC),  ref = "HEALTHY CONTROL"),
+    GENDER  = relevel(factor(GENDER),  ref = "FEMALE"),
     WEAKNESS_SITE = factor(WEAKNESS_SITE),
     PATHOGENIC_VARIANT = factor(PATHOGENIC_VARIANT),
-    COHORT = factor(COHORT),
-    BULBARvSpinal = factor(BULBARvSpinal),
-    C9vsNonC9 = factor(C9vsNonC9),
+    COHORT  = factor(COHORT),
+    BULBARvSpinal = relevel(factor(BULBARvSpinal), ref = "BULBAR"),
+    C9vsNonC9 = relevel(factor(C9vsNonC9), ref = "C9ORF72"),
     SubjectID_Random = factor(SubjectID_Random)
   )
 
-Clinic_MetaF <- Clinic_MetaF_All %>% filter(LONGITUDINAL_ENCOUNTER_NUMBER == 1) 
+### Normality transformation
+Clinic_MetaF_All$ALSFRSR_RATE <- ifelse(Clinic_MetaF_All$ALSFRSR_RATE > 0,
+                                        log(Clinic_MetaF_All$ALSFRSR_RATE),
+                                        NA)
+
+Clinic_MetaF_All$ECAS_SCORE <- boxcoxTranform(Clinic_MetaF_All$ECAS_SCORE, 134)
+Clinic_MetaF_All$ALSFRSR_FINE_MOTOR <- boxcoxTranform(Clinic_MetaF_All$ALSFRSR_FINE_MOTOR, 12)
+Clinic_MetaF_All$ALSFRSR_GROSS_MOTOR <- boxcoxTranform(Clinic_MetaF_All$ALSFRSR_GROSS_MOTOR, 12)
+
+Clinic_MetaF <- Clinic_MetaF_All %>% filter(LONGITUDINAL_ENCOUNTER_NUMBER == 1) # Clinic_MetaF only contain the baseline samples
 
 ### Merge the clinical meta and proteomic data
-commonID1 <- intersect(rownames(MS_BEADdel_ProF), rownames(Clinic_MetaF))
-MS_BEADdel_merged <- cbind(
-  MS_BEADdel_ProF[commonID1, , drop=FALSE],
+commonID1 <- intersect(rownames(BEADdel_ProF), rownames(Clinic_MetaF))
+BEADdel_merged <- cbind(
+  BEADdel_ProF[commonID1, , drop=FALSE],
   Clinic_MetaF[commonID1, , drop=FALSE]
 )
-MS_BEADdel_ProF_matchClinic <- MS_BEADdel_ProF[commonID1, , drop = FALSE]
+BEADdel_ProF_matchClinic <- BEADdel_ProF[commonID1, , drop = FALSE]
 
-commonID2 <- intersect(rownames(MS_NONdel_ProF), rownames(Clinic_MetaF))
-MS_NONdel_merged <- cbind(
-  MS_NONdel_ProF[commonID2, , drop = FALSE],
+commonID2 <- intersect(rownames(NONdel_ProF), rownames(Clinic_MetaF))
+NONdel_merged <- cbind(
+  NONdel_ProF[commonID2, , drop = FALSE],
   Clinic_MetaF[commonID2, , drop = FALSE]
 )
-MS_NONdel_ProF_matchClinic <- MS_NONdel_ProF[commonID2, , drop = FALSE]
+NONdel_ProF_matchClinic <- NONdel_ProF[commonID2, , drop = FALSE]
 
 commonID3 <- intersect(rownames(Olink_ProF), rownames(Clinic_MetaF))
 Olink_merged <- cbind(
@@ -116,171 +130,11 @@ Olink_merged <- cbind(
 )
 Olink_ProF_matchClinic <- Olink_ProF[commonID3, ,drop = FALSE]
 
-########################
-########################
-# DE Between MS & OLINK
-########################
-########################
-# Direct compare the correlation coefficient
-# individualCor_BEADdel_Olink_Pro <- getIndividualRelation(MS_BEADdel_ProF, Olink_ProF, "Protein", "spearman")
-# individualCor_NONdel_Olink_Pro <- getIndividualRelation(MS_NONdel_ProF, Olink_ProF, "Protein", "spearman")
-# individualCor_BEADdel_NONdel_Pro <- getIndividualRelation(MS_BEADdel_ProF, MS_NONdel_ProF, "Protein", "spearman")
-# 
-# corPro_BEADdel_Olink <- names(individualCor_BEADdel_Olink_Pro)[which(abs(individualCor_BEADdel_Olink_Pro)>0.5)]
-# corPro_NONdel_Olink <- names(individualCor_NONdel_Olink_Pro)[which(abs(individualCor_NONdel_Olink_Pro)>0.5)]
-# corPro_BEADdel_NONdel <- names(individualCor_BEADdel_NONdel_Pro)[which(abs(individualCor_BEADdel_NONdel_Pro)>0.5)]
-# 
-# hist(individualCor_BEADdel_Olink_Pro, breaks=100)
-# hist(individualCor_NONdel_Olink_Pro, breaks=100)
-# hist(individualCor_BEADdel_NONdel_Pro, breaks=100)
-# 
-# # Enrichment test
-# geneSymuniverse <- names(individualCor_BEADdel_Olink_Pro)
-# geneList <- corPro_BEADdel_Olink
-# 
-# geneSymuniverse <- names(individualCor_NONdel_Olink_Pro)
-# geneList <- corPro_NONdel_Olink
-# 
-# geneSymuniverse <- names(individualCor_BEADdel_NONdel_Pro)
-# geneList <- corPro_BEADdel_NONdel
-# 
-# GOBPGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c5.go.bp.v2023.2.Hs.symbols.gmt"))
-# GOMFGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c5.go.mf.v2023.2.Hs.symbols.gmt"))
-# GOCCGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c5.go.cc.v2023.2.Hs.symbols.gmt"))
-# REACTOMEGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c2.cp.reactome.v2023.2.Hs.symbols.gmt"))
-# KEGGGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c2.cp.kegg_legacy.v2023.2.Hs.symbols.gmt"))
-# BiocartaGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c2.cp.biocarta.v2023.2.Hs.symbols.gmt"))
-# WikiPathwaysGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c2.cp.wikipathways.v2023.2.Hs.symbols.gmt"))
-# 
-# ### Within each module perform the enrichment test based on the selected database
-# pathBase <- c("GOBP","GOMF","GOCC","REACTOME","KEGG","Biocarta","WikiPathways") ### user define which databases to look into
-# SigPath.List <- lapply(pathBase, function(x) vector("list", length = 1))
-# 
-# GeneSetList <- sapply(paste0(pathBase,"GeneSets"),function(x){get(x)})
-# 
-# gSk=1
-# for(GeneSetsX in GeneSetList){
-#   EnrichPath <- fgsea::fora(GeneSetsX, geneList,geneSymuniverse, minSize = 5, maxSize = 1000) 
-#   
-#   fwrite(EnrichPath, file=paste0(intermediatePath,pathBase[gSk],".BEADdelvsNONdel.txt"), sep="\t", sep2=c("", " ", ""))
-#   
-#   SigPath.List[[gSk]] <-  EnrichPath[which(EnrichPath$padj<0.05),] ### a list store the significant items for further plot
-#   
-#   names(SigPath.List[[gSk]])[1] <- "BEADdelvsNONdel"
-#   
-#   gSk <- gSk+1 
-# }
-# 
-# pdf(paste0(outPath, "Comp.pdf"))
-# 
-# ### Bubble plot to show the significantly enriched pathways
-# files <- paste0(pathBase,".rdata")
-# 
-# for (i in 1:length(pathBase)){
-#   makeBubble(intermediatePath, pathBase[i], 5, 5, files[i])
-# }
-# 
-# individualAdjP_BEADdel_Olink_Samp <- getIndividualRelation(MS_BEADdel_ProF, Olink_ProF, "Sample", "spearman")
-# individualAdjP_NONdel_Olink_Samp <- getIndividualRelation(MS_NONdel_ProF, Olink_ProF, "Sample", "spearman")
-# individualAdjP_BEADdel_NONdel_Samp <- getIndividualRelation(MS_BEADdel_ProF, MS_NONdel_ProF, "Sample", "spearman")
-# 
-# par(mfrow=c(1,3))
-# hist(individualAdjP_BEADdel_Olink_Samp, breaks=100)
-# hist(individualAdjP_NONdel_Olink_Samp, breaks=100)
-# hist(individualAdjP_BEADdel_NONdel_Samp, breaks=100)
-# 
-# corSamp_BEADdel_Olink <- names(individualAdjP_BEADdel_Olink_Samp)[which(abs(individualAdjP_BEADdel_Olink_Samp)>0.7)]
-# corSamp_NONdel_Olink <- names(individualAdjP_NONdel_Olink_Samp)[which(abs(individualAdjP_NONdel_Olink_Samp)>0.7)]
-# corSamp_BEADdel_NONdel <- names(individualAdjP_BEADdel_NONdel_Samp)[which(abs(individualAdjP_BEADdel_NONdel_Samp)>0.7)]
-# 
-# # Compare with global, whether there is something important for the sample characteristics
-# CorSampReport <- Clinic_MetaF_All[corSamp_BEADdel_NONdel,]
-# 
-# # Define variables
-# categorical_vars <- c("ALSvsHC", "ALSvsDC", "BULBARvSpinal", "C9vsNonC9", "GENDER", "COHORT")
-# numeric_vars     <- c("AGE_AT_SYMPTOM_ONSET", "AGE_AT_SAMPLING", "BODY_MASS_INDEX", "ALSFRSR_RATE", "ECAS_SCORE")
-# 
-# all_vars <- c(categorical_vars, numeric_vars)
-# 
-# # Initialize result vector
-# CorSamp_vs_AllSamp <- setNames(rep(NA, length(all_vars)), all_vars)
-# 
-# # Compare categorical variables using Fisher's Exact Test
-# for(var in categorical_vars){
-#   CorSampVar <- CorSampReport %>% 
-#     filter(!is.na(var)) %>% 
-#     pull(var)
-#   
-#   CorSampAll <- Clinic_MetaF %>%
-#     filter(!is.na(var)) %>% 
-#     pull(var)
-#   
-#   AllSampVar <- Clinic_MetaF[,var]
-#   testF <- fisher.test(table(CorSampVar), table(CorSampAll))
-#   CorSamp_vs_AllSamp[var] <- testF$p.value
-# }
-# 
-# # Compare numeric variables using Wilcoxon rank-sum test (non-parametric)
-# for(var in numeric_vars){
-#   CorSampVar <- CorSampReport %>% 
-#     filter(!is.na(var)) %>% 
-#     pull(var)
-#   
-#   CorSampAll <- Clinic_MetaF %>%
-#     filter(!is.na(var)) %>% 
-#     pull(var)
-#   
-#   testKS <- ks.test(table(CorSampVar), table(CorSampAll))
-#   CorSamp_vs_AllSamp[var] <- testKS$p.value
-# }
-# 
-# CorSamp_vs_AllSamp <- p.adjust(CorSamp_vs_AllSamp, method="BH")
-# 
-# # View results
-# CorSamp_vs_AllSamp
-# 
-# # --- Plot distributions for significant variables ---
-# 
-# sig_vars <- names(CorSamp_vs_AllSamp)[CorSamp_vs_AllSamp < 0.05]
-# 
-# for(var in sig_vars){
-#   if(var %in% categorical_vars){
-#     # Bar plot for categorical variables
-#     df <- rbind(
-#       data.frame(value = CorSampReport[[var]], group = "Subset"),
-#       data.frame(value = Clinic_MetaF[[var]], group = "Full")
-#     )
-#     
-#     p <- ggplot(df, aes(x = value, fill = group)) +
-#       geom_bar(position = "dodge") +
-#       labs(title = paste("Distribution of", var),
-#            x = var, y = "Count") +
-#       theme_minimal()
-#     print(p)
-#     
-#   } else if(var %in% numeric_vars){
-#     # Histogram / density for numeric variables
-#     df <- rbind(
-#       data.frame(value = CorSampReport[[var]], group = "Subset"),
-#       data.frame(value = Clinic_MetaF[[var]], group = "Full")
-#     )
-#     
-#     p <- ggplot(df, aes(x = value, fill = group)) +
-#       geom_histogram(alpha = 0.5, position = "identity", bins = 30) +
-#       labs(title = paste("Distribution of", var),
-#            x = var, y = "Count") +
-#       theme_minimal()
-#     print(p)
-#   }
-# }
-# 
-# dev.off()
-
-#######################
-#######################
-# DE Between Platforms
-#######################
-#######################
+##############################
+##############################
+# DE per Trait per Platform 
+##############################
+##############################
 # --------------------------
 # Generate DE P value Table
 # --------------------------
@@ -293,9 +147,9 @@ for(id in c(1,2,3,4,5,13,14)){
   print(class(Clinic_MetaF[,varList[id]]))
 } 
 
-result_tbl_adj_BEADdel <- get_DE_Pvalue_Table(MS_BEADdel_ProF_matchClinic, MS_BEADdel_merged, varList2, "/home/rstudio/workspace/Data Collection/output_baseline/", "BEADdel", varList1)
-result_tbl_adj_NONdel <- get_DE_Pvalue_Table(MS_NONdel_ProF_matchClinic, MS_NONdel_merged, varList2, "/home/rstudio/workspace/Data Collection/output_baseline/", "NONdel", varList1)
-result_tbl_adj_Olink <- get_DE_Pvalue_Table(Olink_ProF_matchClinic, Olink_merged, varList2, "/home/rstudio/workspace/Data Collection/output_baseline/", "Olink", varList1)
+result_tbl_adj_BEADdel <- get_DE_Pvalue_Table(BEADdel_ProF_matchClinic, BEADdel_merged, varList2, outPath, "BEADdel", varList1)
+result_tbl_adj_NONdel <- get_DE_Pvalue_Table(NONdel_ProF_matchClinic, NONdel_merged, varList2, outPath, "NONdel", varList1)
+result_tbl_adj_Olink <- get_DE_Pvalue_Table(Olink_ProF_matchClinic, Olink_merged, varList2, outPath, "Olink", varList1)
 
 # Extract the common significantly expressed proteins
 # Significance threshold
@@ -384,30 +238,30 @@ summary_df
 #----------------------
 # Make scatter plot of protein expression between Olink and MS for ALS vs HC, HC as the reference group
 ALSvsHC_logFC_Olink_F <- extract_logFC(Olink_merged, Olink_ProF_matchClinic, "AMYOTROPHIC LATERAL SCLEROSIS", "HEALTHY CONTROL")
-ALSvsHC_logFC_MS_BEADdel_F <- extract_logFC(MS_BEADdel_merged, MS_BEADdel_ProF_matchClinic, "AMYOTROPHIC LATERAL SCLEROSIS", "HEALTHY CONTROL")
-ALSvsHC_logFC_MS_NONdel_F <- extract_logFC(MS_NONdel_merged, MS_NONdel_ProF_matchClinic, "AMYOTROPHIC LATERAL SCLEROSIS", "HEALTHY CONTROL")
+ALSvsHC_logFC_BEADdel_F <- extract_logFC(BEADdel_merged, BEADdel_ProF_matchClinic, "AMYOTROPHIC LATERAL SCLEROSIS", "HEALTHY CONTROL")
+ALSvsHC_logFC_NONdel_F <- extract_logFC(NONdel_merged, NONdel_ProF_matchClinic, "AMYOTROPHIC LATERAL SCLEROSIS", "HEALTHY CONTROL")
 
 ALSvsHC_SigPro_List <- unique(c(sig_BEADdel[["ALSvsHC"]], sig_NONdel[["ALSvsHC"]], sig_Olink[["ALSvsHC"]]))
 
 ALSvsHC_SigPro_Exist_Platform <- matrix(NA, nrow = length(ALSvsHC_SigPro_List), ncol=9)
 rownames(ALSvsHC_SigPro_Exist_Platform) <- ALSvsHC_SigPro_List
-colnames(ALSvsHC_SigPro_Exist_Platform) <- c("Olink", "MS_BEADdel", "MS_NONdel", "padj_Olink", "logFC_Olink", "padj_MS_BEADdel", "logFC_MS_BEADdel", "padj_MS_NONdel", "logFC_MS_NONdel")
+colnames(ALSvsHC_SigPro_Exist_Platform) <- c("Olink", "BEADdel", "NONdel", "padj_Olink", "logFC_Olink", "padj_BEADdel", "logFC_BEADdel", "padj_NONdel", "logFC_NONdel")
 
 for(ProS in ALSvsHC_SigPro_List){ 
   ALSvsHC_SigPro_Exist_Platform[ProS, "Olink"] <- ifelse(ProS %in% colnames(Olink_ProF), "YES", "NO") 
-  ALSvsHC_SigPro_Exist_Platform[ProS, "MS_BEADdel"] <- ifelse(ProS %in% colnames(MS_BEADdel_ProF), "YES", "NO") 
-  ALSvsHC_SigPro_Exist_Platform[ProS, "MS_NONdel"] <- ifelse(ProS %in% colnames(MS_NONdel_ProF), "YES", "NO")
+  ALSvsHC_SigPro_Exist_Platform[ProS, "BEADdel"] <- ifelse(ProS %in% colnames(BEADdel_ProF), "YES", "NO") 
+  ALSvsHC_SigPro_Exist_Platform[ProS, "NONdel"] <- ifelse(ProS %in% colnames(NONdel_ProF), "YES", "NO")
 }
 
 for(ProS in ALSvsHC_SigPro_List){
   ALSvsHC_SigPro_Exist_Platform[ProS, "logFC_Olink"] <- ifelse(ALSvsHC_SigPro_Exist_Platform[ProS, "Olink"] == "YES", signif(ALSvsHC_logFC_Olink_F[ProS],4), NA)
   ALSvsHC_SigPro_Exist_Platform[ProS, "padj_Olink"] <- ifelse(ALSvsHC_SigPro_Exist_Platform[ProS, "Olink"] == "YES", signif(result_tbl_adj_Olink[ProS,"ALSvsHC"],4), NA)
   
-  ALSvsHC_SigPro_Exist_Platform[ProS, "logFC_MS_BEADdel"] <- ifelse(ALSvsHC_SigPro_Exist_Platform[ProS, "MS_BEADdel"] == "YES", signif(ALSvsHC_logFC_MS_BEADdel_F[ProS],4), NA)
-  ALSvsHC_SigPro_Exist_Platform[ProS, "padj_MS_BEADdel"] <- ifelse(ALSvsHC_SigPro_Exist_Platform[ProS, "MS_BEADdel"] == "YES", signif(result_tbl_adj_BEADdel[ProS,"ALSvsHC"],4), NA)
+  ALSvsHC_SigPro_Exist_Platform[ProS, "logFC_BEADdel"] <- ifelse(ALSvsHC_SigPro_Exist_Platform[ProS, "BEADdel"] == "YES", signif(ALSvsHC_logFC_BEADdel_F[ProS],4), NA)
+  ALSvsHC_SigPro_Exist_Platform[ProS, "padj_BEADdel"] <- ifelse(ALSvsHC_SigPro_Exist_Platform[ProS, "BEADdel"] == "YES", signif(result_tbl_adj_BEADdel[ProS,"ALSvsHC"],4), NA)
   
-  ALSvsHC_SigPro_Exist_Platform[ProS, "logFC_MS_NONdel"] <- ifelse(ALSvsHC_SigPro_Exist_Platform[ProS, "MS_NONdel"] == "YES", signif(ALSvsHC_logFC_MS_NONdel_F[ProS],4), NA)
-  ALSvsHC_SigPro_Exist_Platform[ProS, "padj_MS_NONdel"] <- ifelse(ALSvsHC_SigPro_Exist_Platform[ProS, "MS_NONdel"] == "YES", signif(result_tbl_adj_NONdel[ProS,"ALSvsHC"],4), NA)
+  ALSvsHC_SigPro_Exist_Platform[ProS, "logFC_NONdel"] <- ifelse(ALSvsHC_SigPro_Exist_Platform[ProS, "NONdel"] == "YES", signif(ALSvsHC_logFC_NONdel_F[ProS],4), NA)
+  ALSvsHC_SigPro_Exist_Platform[ProS, "padj_NONdel"] <- ifelse(ALSvsHC_SigPro_Exist_Platform[ProS, "NONdel"] == "YES", signif(result_tbl_adj_NONdel[ProS,"ALSvsHC"],4), NA)
 }
 
 write.csv(ALSvsHC_SigPro_Exist_Platform, file = paste0(outPath, "ALSvsHC_SigPro_Exist_Platform.csv"))
@@ -437,17 +291,17 @@ plot_scatter <- function(df1, df2, protein, label1, label2) {
 for (ProS in ALSvsHC_SigPro_List) {
   
   has_Olink   <- ProS %in% colnames(Olink_ProF)
-  has_BEADdel <- ProS %in% colnames(MS_BEADdel_ProF)
-  has_NONdel  <- ProS %in% colnames(MS_NONdel_ProF)
+  has_BEADdel <- ProS %in% colnames(BEADdel_ProF)
+  has_NONdel  <- ProS %in% colnames(NONdel_ProF)
   
   # Olink vs BEADdel
   if (has_Olink && has_BEADdel) {
     print(
       plot_scatter(
-        Olink_ProF, MS_BEADdel_ProF,
+        Olink_ProF, BEADdel_ProF,
         protein = ProS,
         label1 = "Olink",
-        label2 = "MS_BEADdel"
+        label2 = "BEADdel"
       )
     )
   }
@@ -456,10 +310,10 @@ for (ProS in ALSvsHC_SigPro_List) {
   if (has_Olink && has_NONdel) {
     print(
       plot_scatter(
-        Olink_ProF, MS_NONdel_ProF,
+        Olink_ProF, NONdel_ProF,
         protein = ProS,
         label1 = "Olink",
-        label2 = "MS_NONdel"
+        label2 = "NONdel"
       )
     )
   }
@@ -468,14 +322,209 @@ for (ProS in ALSvsHC_SigPro_List) {
   if (has_BEADdel && has_NONdel) {
     print(
       plot_scatter(
-        MS_BEADdel_ProF, MS_NONdel_ProF,
+        BEADdel_ProF, NONdel_ProF,
         protein = ProS,
-        label1 = "MS_BEADdel",
-        label2 = "MS_NONdel"
+        label1 = "BEADdel",
+        label2 = "NONdel"
       )
     )
   }
   
+}
+
+dev.off()
+
+platformList <- c("Olink", "BEADdel", "NONdel")
+
+########################
+########################
+# Vocano Plot
+######################## 
+########################
+Olink_eff <- read_df(paste0(outPath, "Olink_result_tbl_EffectSize.csv"))
+BEADdel_eff <- read_df(paste0(outPath, "BEADdel_result_tbl_EffectSize.csv"))
+NONdel_eff <- read_df(paste0(outPath, "NONdel_result_tbl_EffectSize.csv"))
+
+effect_list <- list(
+  Olink = Olink_eff,
+  BEADdel = BEADdel_eff,
+  NONdel = NONdel_eff
+)
+
+Olink_adjp <- read_df(paste0(outPath, "Olink_result_tbl_adjp.csv"))
+BEADdel_adjp <- read_df(paste0(outPath, "BEADdel_result_tbl_adjp.csv"))
+NONdel_adjp <- read_df(paste0(outPath, "NONdel_result_tbl_adjp.csv"))
+
+adjp_list <- list(
+  Olink = Olink_adjp,
+  BEADdel = BEADdel_adjp,
+  NONdel = NONdel_adjp
+)
+
+volcano_panel_list <- vector("list", length = length(varAll_List))
+names(volcano_panel_list) <- varAll_List
+
+# Loop over traits to create and store volcano plots panels
+for (trait in varAll_List) {
+  volcano_panel_list[[trait]] <- make_volcano_panel(trait, effect_list, adjp_list)
+  
+  out_file <- paste0(outPath, trait, "_volcano_panel.pdf")
+  
+  ggsave(
+    filename = out_file,
+    plot = volcano_panel_list[[trait]],
+    device = "pdf",
+    width = 14,   # landscape width
+    height = 6,   # landscape height
+    units = "in"
+  )
+}
+
+# Save the list of volcano panels
+save(volcano_panel_list, file = paste0(intermediatePath, "volcano_panel_list.rdata"))
+
+# Interactive volcano plot
+plotly_volcano_list <- list()
+
+# Loop through each trait and platform
+for (trait in varAll_List) {
+  plotly_volcano_list[[trait]] <- list()
+  
+  for (plat in platformList) {
+    df_eff <- effect_list[[plat]]
+    df_p   <- adjp_list[[plat]]
+    
+    plotly_volcano_list[[trait]][[plat]] <- make_volcano_plotly(df_eff, df_p, trait, plat)
+  }
+}
+
+save(plotly_volcano_list, file = paste0(intermediatePath, "plotly_volcano_list.rdata"))
+
+########################
+########################
+# Enrichment Testing
+######################## 
+########################
+### traits for testing
+varAll_List <- c("ALSvsHC", "ALSvsDC", "DCvsHC", "BULBARvSpinal", "C9vsNonC9", "BODY_MASS_INDEX", "ALSFRSR_FINE_MOTOR", "ALSFRSR_GROSS_MOTOR", "ALSFRSR_RATE", "ECAS_SCORE")
+
+### Ranking matrix calculation
+Ranks_Olink_AllVar <- Calculate_Ranking_Metric(paste0(outPath, "Olink_result_tbl_p.csv"), 
+                                               paste0(outPath, "Olink_result_tbl_EffectSize.csv"))
+
+Ranks_BEADdel_AllVar <- Calculate_Ranking_Metric(paste0(outPath, "BEADdel_result_tbl_p.csv"), 
+                                                 paste0(outPath, "BEADdel_result_tbl_EffectSize.csv"))
+
+Ranks_NONdel_AllVar <- Calculate_Ranking_Metric(paste0(outPath, "NONdel_result_tbl_p.csv"), 
+                                                paste0(outPath, "NONdel_result_tbl_EffectSize.csv"))
+
+### Prepare genesets used for our enrichment test
+GOBPGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c5.go.bp.v2023.2.Hs.symbols.gmt"))
+GOMFGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c5.go.mf.v2023.2.Hs.symbols.gmt"))
+GOCCGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c5.go.cc.v2023.2.Hs.symbols.gmt"))
+REACTOMEGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c2.cp.reactome.v2023.2.Hs.symbols.gmt"))
+KEGGGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c2.cp.kegg_legacy.v2023.2.Hs.symbols.gmt"))
+BiocartaGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c2.cp.biocarta.v2023.2.Hs.symbols.gmt"))
+WikiPathwaysGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c2.cp.wikipathways.v2023.2.Hs.symbols.gmt"))
+
+pathBaseList <- c("GOBP","GOMF","GOCC","REACTOME","KEGG","Biocarta","WikiPathways") 
+
+GeneSetList <- sapply(paste0(pathBaseList,"GeneSets"),function(x){get(x)})
+
+SigPath_List <- lapply(varAll_List, function(v) {
+  
+  # For each variable, create platform layer
+  platformContainer <- lapply(platformList, function(p) {
+    
+    # For each platform, create gene set layer
+    geneSetContainer <- setNames(
+      vector("list", length(pathBaseList)),
+      pathBaseList
+    )
+    
+    return(geneSetContainer)
+  })
+  
+  # Name platforms inside this variable
+  platformContainer <- setNames(platformContainer, platformList)
+  
+  return(platformContainer)
+})
+
+# Name the top layer with variable names
+SigPath_List <- setNames(SigPath_List, varAll_List)
+
+for (ClinicVar in varAll_List) {
+  
+  for (platform in platformList) {
+    
+    # Extract numeric ranking vector
+    ranks_M <- get(paste0("Ranks_", platform, "_AllVar"))
+    ranks <- ranks_M[,ClinicVar]
+    names(ranks) <- rownames(ranks_M)
+    ranks <- ranks[which(!is.na(ranks))]
+    
+    # Determine scoreType
+    if (sign(min(ranks)) * sign(max(ranks)) == -1) {
+      whichType <- "std"
+    } else if (min(ranks) > 0) {
+      whichType <- "pos"
+    } else {
+      whichType <- "neg"
+    }
+    
+    for (GScont in seq_along(GeneSetList)) {
+      
+      GeneSetsX <- GeneSetList[[GScont]]
+      
+      fgseaPath <- fgsea::fgsea(
+        pathways = GeneSetsX,
+        stats = ranks,
+        scoreType = whichType,
+        eps = 0.0,
+        minSize = 10,
+        maxSize = 1000
+      )
+      
+      # write result table
+      fwrite(
+        fgseaPath,
+        file = paste0(
+          intermediatePath,
+          pathBaseList[GScont], "_", ClinicVar, "_", platform, ".txt"
+        ),
+        sep = "\t",
+        sep2 = c("", " ", "")
+      )
+      
+      sig_fgseaPath <- fgseaPath %>%
+        filter(padj < 0.05) %>%
+        arrange(padj)
+      
+      # save into SigPath_List (IMPORTANT FIX: moved inside loop!)
+      SigPath_List[[ClinicVar]][[platform]][[pathBaseList[GScont]]] <- sig_fgseaPath
+    }
+  }
+}
+
+### Bubble plot to show the significantly enriched pathways
+Enrich_Rdat_files <- outer(
+  pathBaseList,
+  varAll_List,
+  Vectorize(function(p, v) paste0(p, "_", v, ".rdata"))
+)
+
+Enrich_Rdat_files <- as.vector(Enrich_Rdat_files)
+
+pdf(paste0(outPath, "DifferentialExpression_PathwayEnrichment.pdf"))
+
+fileCt <- 1
+for (pathBase in pathBaseList){
+  for(ClinicVar in varAll_List){
+    patternHere <- paste0(pathBase, "_", ClinicVar)
+    makeBubble(intermediatePath, patternHere, 5, 5, Enrich_Rdat_files[fileCt])
+    fileCt <- fileCt + 1
+  }
 }
 
 dev.off()
@@ -487,8 +536,8 @@ dev.off()
 #----------------------
 # Make scatter plot of protein expression between Olink and MS for ALS vs HC, HC as the reference group
 DCvsHC_logFC_Olink_F <- extract_logFC(Olink_merged, Olink_ProF_matchClinic, "DISEASE CONTROL", "HEALTHY CONTROL")
-DCvsHC_logFC_MS_BEADdel_F <- extract_logFC(MS_BEADdel_merged, MS_BEADdel_ProF_matchClinic, "DISEASE CONTROL", "HEALTHY CONTROL")
-DCvsHC_logFC_MS_NONdel_F <- extract_logFC(MS_NONdel_merged, MS_NONdel_ProF_matchClinic, "DISEASE CONTROL", "HEALTHY CONTROL")
+DCvsHC_logFC_BEADdel_F <- extract_logFC(BEADdel_merged, BEADdel_ProF_matchClinic, "DISEASE CONTROL", "HEALTHY CONTROL")
+DCvsHC_logFC_NONdel_F <- extract_logFC(NONdel_merged, NONdel_ProF_matchClinic, "DISEASE CONTROL", "HEALTHY CONTROL")
 
 DCvsHC_SigPro_List <- unique(c(sig_BEADdel[["DCvsHC"]], sig_NONdel[["DCvsHC"]], sig_Olink[["DCvsHC"]]))
 

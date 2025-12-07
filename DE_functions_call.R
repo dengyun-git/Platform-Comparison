@@ -308,8 +308,8 @@ read_df <- function(file) {
 Calculate_Ranking_Metric <- function(file1, file2){
   
   ### Load P-value files
-  P_DataFrame <- read.csv(file1, row.names =1)
-  EF_DataFrame  <- read.csv(file2, row.names = 1)[rownames(P_DataFrame),] ### always pay attention to row names matching 
+  P_DataFrame <- read_df(file1)
+  EF_DataFrame  <- read_df(file2)[rownames(P_DataFrame),] ### always pay attention to row names matching 
   
   ### Calculate ranking matrix per clinical variable: -log(p) * sign(effect size)
   Rank_Matrix_AllVar <- (-log(P_DataFrame)) * EF_DataFrame
@@ -440,7 +440,7 @@ make_volcano <- function(df_eff, df_p, trait, platform,
       max.overlaps = Inf
     ) +
     theme_minimal(base_size = 14) +
-    xlab("Effect Size (β)") +
+    xlab(expression("Effect Size ("*beta*")")) +
     ylab("-log10(Adjusted p-value)") +
     ggtitle(paste0(trait, " (", platform, ")")) +
     theme(
