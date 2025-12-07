@@ -414,7 +414,7 @@ names(volcano_panel_list) <- varAll_List
 
  # Loop over traits to create and store volcano plots panels
 for (trait in varAll_List) {
-  volcano_panel_list[[trait]] <- make_volcano_panel(trait, effect_list, pval_list)
+  volcano_panel_list[[trait]] <- make_volcano_panel(trait, effect_list, adjp_list)
   
   out_file <- paste0(outPath, trait, "_volcano_panel.pdf")
   
@@ -430,6 +430,23 @@ for (trait in varAll_List) {
 
 # Save the list of volcano panels
 save(volcano_panel_list, file = paste0(intermediatePath, "volcano_panel_list.rdata"))
+
+# Interactive volcano plot
+plotly_volcano_list <- list()
+
+# Loop through each trait and platform
+for (trait in varAll_List) {
+  plotly_volcano_list[[trait]] <- list()
+  
+  for (plat in platformList) {
+    df_eff <- effect_list[[plat]]
+    df_p   <- adjp_list[[plat]]
+    
+    plotly_volcano_list[[trait]][[plat]] <- make_volcano_plotly(df_eff, df_p, trait, plat)
+  }
+}
+
+save(plotly_volcano_list, file = paste0(intermediatePath, "plotly_volcano_list.rdata"))
 
 ########################
 ########################
@@ -459,7 +476,7 @@ pathBaseList <- c("GOBP","GOMF","GOCC","REACTOME","KEGG","Biocarta","WikiPathway
 
 GeneSetList <- sapply(paste0(pathBaseList,"GeneSets"),function(x){get(x)})
 
-platformList <- c("Olink", "MSBEADdel", "MSNONdel")
+platformList <- c("Olink", "BEADdel", "NONdel")
 
 SigPath_List <- lapply(varAll_List, function(v) {
   

@@ -441,8 +441,15 @@ make_volcano <- function(df_eff, df_p, trait, platform,
     ) +
     theme_minimal(base_size = 14) +
     xlab("Effect Size (β)") +
-    ylab("-log10(p-value)") +
-    ggtitle(paste0(Trait, " (", platform, ")"))
+    ylab("-log10(Adjusted p-value)") +
+    ggtitle(paste0(trait, " (", platform, ")")) +
+    theme(
+      axis.title.x = element_text(size = 10, face = "bold", color = "black"),
+      axis.title.y = element_text(size = 10, face = "bold", color = "black"),
+      plot.title   = element_text(size = 12, face = "bold", color = "black", hjust = 0.5),
+      legend.title = element_text(size = 10, face = "bold", color = "black"),
+      legend.text  = element_text(size = 9,  face = "bold", color = "black")
+    )
   
   return(p)
 }
@@ -459,28 +466,55 @@ make_volcano_panel <- function(trait, effect_list, pval_list) {
   return(panel)
 }
 
-make_volcano_plotly <- function(df_eff, df_p, trait, platform) {
+make_volcano_plotly <- function(df_eff, df_p, trait, platform, p_threshold = 0.05, effect_threshold = 0) {
   
   df <- data.frame(
     Protein = rownames(df_eff),
     Effect  = df_eff[[trait]],
     Pvalue  = df_p[[trait]]
   ) %>%
-    mutate(logP = -log10(Pvalue))
+    mutate(
+      logP = -log10(Pvalue),
+      Significance = case_when(
+        Pvalue < p_threshold & Effect > 0 ~ "Up",
+        Pvalue < p_threshold & Effect < 0 ~ "Down",
+        TRUE ~ "NS"
+      )
+    )
   
   plot_ly(
     df,
     x = ~Effect,
     y = ~logP,
-    text = ~Protein,
+    text = ~paste0("Protein: ", Protein,
+                   "<br>Effect: ", round(Effect, 3),
+                   "<br>Adjusted p-value: ", signif(Pvalue, 3),
+                   "<br>Significance: ", Significance),
     type = "scatter",
     mode = "markers",
-    hoverinfo = "text",
-    marker = list(size = 7, opacity = 0.6)
+    color = ~Significance,
+    colors = c("Up" = "firebrick", "Down" = "darkgreen", "NS" = "grey50"),
+    marker = list(size = 8, opacity = 0.7)
   ) %>%
     layout(
-      title = paste0("Interactive Volcano: ", trait, " (", platform, ")"),
-      xaxis = list(title = "Effect Size"),
-      yaxis = list(title = "-log10(p-value)")
+      title = list(
+        text = paste0(trait, " (", platform, ")"),
+        font = list(size = 20, color = "black", family = "Arial", bold = TRUE),
+        x = 0.5,
+        y = 0.96  # lower the title slightly
+      ),
+      xaxis = list(
+        title = list(text = "Effect Size (β)", font = list(size = 16, color = "black", family = "Arial", bold = TRUE)),
+        tickfont = list(size = 14, color = "black", family = "Arial", bold = TRUE)
+      ),
+      yaxis = list(
+        title = list(text = "-log10(Adjusted p-value)", font = list(size = 16, color = "black", family = "Arial", bold = TRUE)),
+        tickfont = list(size = 14, color = "black", family = "Arial", bold = TRUE)
+      ),
+      legend = list(
+        title = list(text = "Significance", font = list(size = 16, color = "black", family = "Arial", bold = TRUE)),
+        font = list(size = 14, color = "black", family = "Arial", bold = TRUE)
+      ),
+      showlegend = TRUE
     )
 }
