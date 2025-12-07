@@ -420,7 +420,7 @@ adjp_list <- list(
 volcano_panel_list <- vector("list", length = length(varAll_List))
 names(volcano_panel_list) <- varAll_List
 
- # Loop over traits to create and store volcano plots panels
+# Loop over traits to create and store volcano plots panels
 for (trait in varAll_List) {
   volcano_panel_list[[trait]] <- make_volcano_panel(trait, effect_list, adjp_list)
   
@@ -466,10 +466,10 @@ Ranks_Olink_AllVar <- Calculate_Ranking_Metric(paste0(outPath, "Olink_pvalue.csv
                                                paste0(outPath, "Olink_EffectSize.csv"))
 
 Ranks_BEADdel_AllVar <- Calculate_Ranking_Metric(paste0(outPath, "BEADdel_pvalue.csv"), 
-                                                  paste0(outPath, "BEADdel_EffectSize.csv"))
+                                                 paste0(outPath, "BEADdel_EffectSize.csv"))
 
 Ranks_NONdel_AllVar <- Calculate_Ranking_Metric(paste0(outPath, "NONdel_pvalue.csv"), 
-                                                  paste0(outPath, "NONdel_EffectSize.csv"))
+                                                paste0(outPath, "NONdel_EffectSize.csv"))
 
 ### Prepare genesets used for our enrichment test
 GOBPGeneSets <- fgsea::gmtPathways(paste0(inputPath,"OnlineResource/c5.go.bp.v2023.2.Hs.symbols.gmt"))
@@ -581,3 +581,11 @@ for (pathBase in pathBaseList){
 }
 
 dev.off()
+
+ply_list <- vector(mode = "list", length = length(Enrich_Rdat_files))
+names(ply_list) <- sub(".rdat", "", Enrich_Rdat_files)
+for (ct in seq_along(Enrich_Rdat_files)){
+  ply_list[[ct]] <- generate_interactive_pathway_plot(paste0(intermediatePath, Enrich_Rdat_files[ct]), names(ply_list)[ct])
+}
+
+save(ply_list, file = paste0(outPath, "ply_list.rdata"))

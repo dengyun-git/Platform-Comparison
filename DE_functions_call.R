@@ -381,7 +381,7 @@ generate_interactive_pathway_plot <- function(file_path, titleMessage) {
     paste(x, collapse = ", ")
   })
   
-  plot_ly(
+  ply <- plot_ly(
     comSFDat,
     type = 'scatter',
     mode = 'markers',
@@ -411,6 +411,7 @@ generate_interactive_pathway_plot <- function(file_path, titleMessage) {
       yaxis = list(title = "", tickfont = list(size = 10, family = "Arial Black")),
       margin = list(b = 100)
     )
+  return(ply)
 }
 
 

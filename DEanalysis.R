@@ -529,6 +529,14 @@ for (pathBase in pathBaseList){
 
 dev.off()
 
+ply_list <- vector(mode = "list", length = length(Enrich_Rdat_files))
+names(ply_list) <- sub(".rdat", "", Enrich_Rdat_files)
+for (ct in seq_along(Enrich_Rdat_files)){
+  ply_list[[ct]] <- generate_interactive_pathway_plot(paste0(intermediatePath, Enrich_Rdat_files[ct]), names(ply_list)[ct])
+}
+
+save(ply_list, file = paste0(outPath, "ply_list.rdata"))
+
 #----------------------
 #----------------------
 # Special for DCvsHC

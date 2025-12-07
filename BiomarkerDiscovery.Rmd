@@ -37,45 +37,45 @@ display: list-item;
 # 1 - Global Summary of the Setting of this Study
 
 1. **Proteomic Platforms:**  
-   We analyzed proteomic data from three different platforms:  
-   - **Olink**  
-   - **Mass Spectrometry with bead depletion (BEADdel, referred to as BEADdel in this report)**  
-   - **Mass Spectrometry without bead depletion (NONdel, referred to as NONdel in this report)**
+We analyzed proteomic data from three different platforms:  
+- **Olink**  
+- **Mass Spectrometry with bead depletion (BEADdel, referred to as BEADdel in this report)**  
+- **Mass Spectrometry without bead depletion (NONdel, referred to as NONdel in this report)**
 
 2. **Analytical Approaches:**  
-   Two complementary approaches were used to explore potential protei biomarkers:  
-   - **Protein Differential Expression Analysis:** Regression models with protein levels as the **response variable**.  
-   - **Association Testing:** Regression models with protein levels as the **predictor variable**.  
+Two complementary approaches were used to explore potential protei biomarkers:  
+- **Protein Differential Expression Analysis:** Regression models with protein levels as the **response variable**.  
+- **Association Testing:** Regression models with protein levels as the **predictor variable**.  
 
-   These approaches were chosen to capture different structural patterns in the proteomic data.
+These approaches were chosen to capture different structural patterns in the proteomic data.
 
 3. **Analysis Scope:**  
-   Both differential expression analysis and association testing were performed **per platform and per clinical trait**.
+Both differential expression analysis and association testing were performed **per platform and per clinical trait**.
 
 4. **Clinical Variables:**  
-   The clinical variables included in this report are:  
-   - `"ALSvsHC"`, `"ALSvsDC"`, `"DCvsHC"`, `"ALSFRSR_FINE_MOTOR"`, `"ALSFRSR_GROSS_MOTOR"`, `"ALSFRSR_RATE"`, `"ECAS_SCORE"`  
-   - `"BULBARvSpinal"` – derived from `WEAKNESS_SITE`, where `"GENERALISED"`, `"LOWER LIMB"`, `"RESPIRATORY"`, `"TRUNCAL"`, and `"UPPER LIMB"` are grouped as `"Spinal"`  
-   - `"C9vsNonC9"` – derived from `PATHOGENIC_VARIANT`, where `"KIF5A", "MAPT", "SBMA", "SOD1", "SPG7", "TBK1"` are grouped as NonC9 carriers  
+The clinical variables included in this report are:  
+- `"ALSvsHC"`, `"ALSvsDC"`, `"DCvsHC"`, `"ALSFRSR_FINE_MOTOR"`, `"ALSFRSR_GROSS_MOTOR"`, `"ALSFRSR_RATE"`, `"ECAS_SCORE"`  
+- `"BULBARvSpinal"` – derived from `WEAKNESS_SITE`, where `"GENERALISED"`, `"LOWER LIMB"`, `"RESPIRATORY"`, `"TRUNCAL"`, and `"UPPER LIMB"` are grouped as `"Spinal"`  
+- `"C9vsNonC9"` – derived from `PATHOGENIC_VARIANT`, where `"KIF5A", "MAPT", "SBMA", "SOD1", "SPG7", "TBK1"` are grouped as NonC9 carriers  
 
-   **Data transformations:**  
-   - `ALSFRSR_RATE` – log-transformed  
-   - `ECAS_SCORE` – Box-Cox transformed with a maximum value of 134  
-   - `ALSFRSR_FINE_MOTOR` and `ALSFRSR_GROSS_MOTOR` – Box-Cox transformed with a maximum value of 12
+**Data transformations:**  
+- `ALSFRSR_RATE` – log-transformed  
+- `ECAS_SCORE` – Box-Cox transformed with a maximum value of 134  
+- `ALSFRSR_FINE_MOTOR` and `ALSFRSR_GROSS_MOTOR` – Box-Cox transformed with a maximum value of 12
 
 5. **Handling Missing Values and Confounders:**  
-   - Missing values were **excluded on a per-regression basis**.  
-   - **Age and gender** were included as confounding factors in all regression models.
+- Missing values were **excluded on a per-regression basis**.  
+- **Age and gender** were included as confounding factors in all regression models.
 
 6. **Pathway Enrichment Testing:**  
-   - Performed **per platform and per clinical trait**.  
-   - The pathway databases included are: `"GOBP"`, `"GOMF"`, `"GOCC"`, `"REACTOME"`, `"KEGG"`, `"Biocarta"`, and `"WikiPathways"`.  
-   - **Ranked Gene Set Enrichment Testing** was adopted, using the ranking metric:  
-     \[
-     \text{Rank} = -\log(p) \times \text{sign}(\beta)
-     \]  
-     where `p` and `β` are derived from the respective regression model.
-     
+- Performed **per platform and per clinical trait**.  
+- The pathway databases included are: `"GOBP"`, `"GOMF"`, `"GOCC"`, `"REACTOME"`, `"KEGG"`, `"Biocarta"`, and `"WikiPathways"`.  
+- **Ranked Gene Set Enrichment Testing** was adopted, using the ranking metric:  
+\[
+\text{Rank} = -\log(p) \times \text{sign}(\beta)
+\]  
+where `p` and `β` are derived from the respective regression model.
+
 # 2 - The Major Conclusions
 
 <b><font face="Georgia" size="2em" color="firebrick"> Wait Avi to fill in. </font></b>
@@ -92,7 +92,7 @@ library(DT)
 inputPath <- "/home/rstudio/workspace/Data Collection/"
 intermediatePath1 <- "/home/rstudio/workspace/Data Collection/intermediate_AssociationTesting/"
 intermediatePath2 <- "/home/rstudio/workspace/Data Collection/intermediate_DifferentialExpression/"
-outPath1 <- "/home/rstudio/workspace/Data Collection/output_AssociationTesting"
+outPath1 <- "/home/rstudio/workspace/Data Collection/output_AssociationTesting/"
 outPath2 <- "/home/rstudio/workspace/Data Collection/output_DifferentialExpression/"
 outPath <- "/home/rstudio/workspace/Data Collection/output_report/"
 
@@ -180,151 +180,114 @@ NONdel_ClinicVar_View
 # 6 - Volcano Plot{.tabset}
 These plots are derived from the protein correlation coefficients obtained from the association testing model for each clinical trait.
 
-```{r volcano_plots_by_trait, results='asis', echo=FALSE, warning=FALSE, message=FALSE, fig.width=15, fig.height=8}
+```{r, results='asis', echo=FALSE, warning=FALSE, message=FALSE, fig.width=15, fig.height=8}
 
 # Load plots
-load(paste0(intermediatePath, "volcano_panel_list.rdata"))
+load(paste0(intermediatePath1, "volcano_panel_list.rdata"))
 load(paste0(intermediatePath1, "plotly_volcano_list.rdata"))
 
 for (trait in varAll_List) {
   
   out <- NULL
+  uniq_id <- sample(1e6, 1)  # generate a random number for uniqueness
   
-  out <- knitr::knit_expand(text = c(
-    
-    # Tab header for trait
-    paste0("## ", trait, "\n"),
-    
-    # --- Chunk 1: Static Volcano Plot ---
-    paste0("### Static Volcano Plot\n"),
-    paste0("```{r StaticVolcano_", trait, ", echo=FALSE, fig.width=15, fig.height=8}"),
-    paste0("print(volcano_panel_list[['", trait, "']])"),
-    "```",
-    
-    # --- Chunk 2: Interactive Volcano Plots ---
-    paste0("### Interactive Volcano Plots\n"),
-    
-    # Loop over platforms inside the knit_expand text
-    paste0("{% for plat in platformList %}",
-           "#### Platform: {{plat}}\n",
-           "```{r InteractiveVolcano_", trait, "_{{plat}}, echo=FALSE, fig.width=15, fig.height=8}",
-           "print(plotly_volcano_list[['", trait, "']][['{{plat}}']])",
-           "```",
-           "{% endfor %}")
-  ))
+  # Static plot
+  out <- c(out, 
+           paste0("```{r StaticVolcano_", trait, "_", uniq_id, ", echo=FALSE, fig.width=15, fig.height=8}"),
+           paste0("volcano_panel_list[['", trait, "']]"),
+           "```")
   
-  # Render the child content
-  cat(knitr::knit_child(text = out, quiet = TRUE), sep = "\n")
+  # Interactive plots
+  for (plat in platformList) {
+    uniq_id2 <- sample(1e6, 1)
+    out <- c(out,
+             paste0("```{r InteractiveVolcano_", trait, "_", plat, "_", uniq_id2, ", echo=FALSE, fig.width=15, fig.height=8}"),
+             paste0("plotly_volcano_list[['", trait, "']][['", plat, "']]"),
+             "```")
+  }
+  
+  cat(knitr::knit_child(text = paste(out, collapse = "\n"), quiet = TRUE), sep = "\n")
 }
 ```
 
 # 7 - Pathway Enrichment Testing{.tabset}
 
 # 7.1 - Pathway Enrichment Analysis Based on Association Testing, Using Proteins as Predictors{.tabset}
-```{r pathway_enrichment_plots_association, results='asis', echo=FALSE, warning=FALSE, message=FALSE}
+```{r pathway_plots_nested_tabs, results='asis', echo=FALSE}
+load(paste0(outPath1, "ply_list.rdata"))
+options(plotly.export = FALSE)
+options(htmlwidgets.TEMP = FALSE)
 
 pathBaseList <- c("GOBP","GOMF","GOCC","REACTOME","KEGG","Biocarta","WikiPathways") 
 
+chunk_id <- 1   # ensure uniqueness
+
 for (trait in varAll_List) {
   
-  out <- NULL
+  # ---- FIRST-LEVEL TAB: CLINICAL TRAIT ----
+  cat("##", trait, "\n\n")
   
-  out <- knitr::knit_expand(text = c(
-    
-    # --- Top-level tab: trait ---
-    paste0("## ", trait, "\n"),
-    
-    # Loop over pathway databases
-    paste0("{% for db in pathBaseList %}",
-           "### ", "{{db}}", "\n")
-  ))
-  
-  # Render top-level trait tab
-  cat(knitr::knit_child(text = out, quiet = TRUE), sep = "\n")
-  
-  # Loop over pathway databases in R to render platform plots
   for (db in pathBaseList) {
     
-    db_out <- NULL
+    # ---- SECOND-LEVEL TAB: DATABASE ----
+    cat("###", db, "\n\n")
     
-    db_out <- knitr::knit_expand(text = c(
-      # Nested tab header for pathway database
-      paste0("#### ", db, "\n")
-    ))
+    # find matching entry in ply_list
+    ply_pattern <- paste0(db, "_", trait)
+    idx <- grep(ply_pattern, names(ply_list))
     
-    # Render nested tab header
-    cat(knitr::knit_child(text = db_out, quiet = TRUE), sep = "\n")
-    
-    # Loop over platforms for this trait + pathway
-    for (plat in platformList) {
+    if (length(idx) == 1) {
+      key <- names(ply_list)[idx]
       
-      file_path <- paste0(intermediatePath1, trait, "_", plat, "_", db, ".rdata")
-      if (file.exists(file_path)) {
-        load(file_path)
-        
-        plot_chunk <- knitr::knit_expand(text = c(
-          paste0("```{r PathwayPlot_", trait, "_", plat, "_", db, ", echo=FALSE, fig.width=15, fig.height=8}"),
-          paste0("generate_interactive_pathway_plot('", file_path, "', '", trait, "_", plat, "_", db, "')"),
-          "```"
-        ))
-        
-        cat(knitr::knit_child(text = plot_chunk, quiet = TRUE), sep = "\n")
-        rm(comSFDat)
-      }
+      # create guaranteed-unique chunk label
+      chunk_label <- paste0("PlotChunk_", chunk_id)
+      chunk_id <- chunk_id + 1
+      
+      # output the plot chunk
+      cat(paste0(
+        "```{r ", chunk_label, ", echo=FALSE}\n",
+        "plotly::plotly_build(ply_list[['", key, "']])\n",
+        "```\n\n"
+      ))
     }
   }
 }
+
 ```
 
 # 7.2 - Pathway Enrichment Analysis Based on Differential Expression, Using Proteins as Response Variables{.tabset}
-```{r pathway_enrichment_plots_DE, results='asis', echo=FALSE, warning=FALSE, message=FALSE}
+```{r, results='asis', echo=FALSE, warning=FALSE, message=FALSE}
+load(paste0(outPath2, "ply_list.rdata"))
+
+chunk_id <- 1   # ensure uniqueness
 
 for (trait in varAll_List) {
   
-  out <- NULL
+  # ---- FIRST-LEVEL TAB: CLINICAL TRAIT ----
+  cat("##", trait, "\n\n")
   
-  out <- knitr::knit_expand(text = c(
-    
-    # --- Top-level tab: trait ---
-    paste0("## ", trait, "\n"),
-    
-    # Loop over pathway databases
-    paste0("{% for db in pathBaseList %}",
-           "### ", "{{db}}", "\n")
-  ))
-  
-  # Render top-level trait tab
-  cat(knitr::knit_child(text = out, quiet = TRUE), sep = "\n")
-  
-  # Loop over pathway databases in R to render platform plots
   for (db in pathBaseList) {
     
-    db_out <- NULL
+    # ---- SECOND-LEVEL TAB: DATABASE ----
+    cat("###", db, "\n\n")
     
-    db_out <- knitr::knit_expand(text = c(
-      # Nested tab header for pathway database
-      paste0("#### ", db, "\n")
-    ))
+    # find matching entry in ply_list
+    ply_pattern <- paste0(db, "_", trait)
+    idx <- grep(ply_pattern, names(ply_list))
     
-    # Render nested tab header
-    cat(knitr::knit_child(text = db_out, quiet = TRUE), sep = "\n")
-    
-    # Loop over platforms for this trait + pathway
-    for (plat in platformList) {
+    if (length(idx) == 1) {
+      key <- names(ply_list)[idx]
       
-      file_path <- paste0(intermediatePath2, trait, "_", plat, "_", db, ".rdata")
-      if (file.exists(file_path)) {
-        load(file_path)
-        
-        plot_chunk <- knitr::knit_expand(text = c(
-          paste0("```{r PathwayPlot_", trait, "_", plat, "_", db, ", echo=FALSE, fig.width=15, fig.height=8}"),
-          paste0("generate_interactive_pathway_plot('", file_path, "', '", trait, "_", plat, "_", db, "')"),
-          "```"
-        ))
-        
-        cat(knitr::knit_child(text = plot_chunk, quiet = TRUE), sep = "\n")
-        rm(comSFDat)
-      }
+      # create guaranteed-unique chunk label
+      chunk_label <- paste0("PlotChunk_", chunk_id)
+      chunk_id <- chunk_id + 1
+      
+      # output the plot chunk
+      cat(paste0(
+        "```{r ", chunk_label, ", echo=FALSE}\n",
+        "plotly::plotly_build(ply_list[['", key, "']])\n",
+        "```\n\n"
+      ))
     }
   }
 }
@@ -339,7 +302,7 @@ SigProSummary_AT <- read.csv(paste0(outPath1, "SigProSummary.csv"))
 SigProSummary_DE <- read.csv(paste0(outPath2, "SigProSummary.csv"))
 
 # Get all unique ClinicalVar from both data frames
-all_clinical <- union(SigProSummary_AT$ClinicalVar)
+all_clinical <- SigProSummary_AT$ClinicalVar
 
 # Initialize an empty list to store results
 result_list <- vector("list", length(all_clinical))
