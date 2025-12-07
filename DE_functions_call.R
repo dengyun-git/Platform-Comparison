@@ -298,32 +298,18 @@ ViewClinincalVar <- function(cat_vars, num_vars, Clinic_MetaF_Here){
 
 #---------------------------------------------------------------------
 # Function to calculate ranking metrics for enrichment testing
-Calculate_Ranking_Metric <- function(file1, file2, file3, file4){
-  read_df <- function(file) {
-    df <- read.csv(file, check.names = FALSE)
-    rownames(df) <- make.unique(df[,1])   # for duplicate protein names for MS
-    df <- df[ , -1, drop = FALSE]        
-    return(df)
-  }
+read_df <- function(file) {
+  df <- read.csv(file, check.names = FALSE)
+  rownames(df) <- make.unique(df[,1])   # for duplicate protein names for MS
+  df <- df[ , -1, drop = FALSE]        
+  return(df)
+}
+
+Calculate_Ranking_Metric <- function(file1, file2){
   
   ### Load P-value files
-  logit_P_DataFrame <- read_df(file1)
-  lin_P_DataFrame   <- read_df(file2)
-  
-  ### Ensure both tables share the same protein order
-  P_DataFrame <- cbind(
-    logit_P_DataFrame,
-    lin_P_DataFrame[rownames(logit_P_DataFrame), , drop = FALSE]
-  )
-  
-  ### Load effect-size files
-  logit_EF_DataFrame <- read_df(file3)
-  lin_EF_DataFrame   <- read_df(file4)
-  
-  EF_DataFrame <- cbind(
-    logit_EF_DataFrame,
-    lin_EF_DataFrame[rownames(logit_EF_DataFrame), , drop = FALSE]
-  )
+  P_DataFrame <- read.csv(file1, row.names =1)
+  EF_DataFrame  <- read.csv(file2, row.names = 1)[rownames(P_DataFrame),] ### always pay attention to row names matching 
   
   ### Calculate ranking matrix per clinical variable: -log(p) * sign(effect size)
   Rank_Matrix_AllVar <- (-log(P_DataFrame)) * EF_DataFrame
@@ -370,7 +356,7 @@ makeBubble <- function(pathHere, patternHere, sizeHere1,sizeHere2, saveMessage){
   comSFDat %<>% mutate(pathway = tolower(gsub("_", " ", gsub("^[^_]*_", "", pathway))))
   
   p.comp <- ggplot(data=comSFDat) + geom_point(aes(x= factor(resource,levels=resourceLabel),y=pathway,size=-log(pval),color = NES,shape=factor(YNSignificant,levels=c("Y","N")))) + xlab("") + ylab("") + 
-    labs(color="overlap",shape="padj<0.05",size="-log(pval)") + ggtitle(paste0("Enrichment test based on\n",patternHere, " database")) +
+    labs(color="NES",shape="padj<0.05",size="-log(pval)") + ggtitle(paste0("Enrichment test based on\n",patternHere, " database")) +
     scale_shape_manual(values=c(19,1),labels=c("Y","N")) +
     theme(plot.title=element_text(size = 8 ,face="bold",hjust=0.5),
           axis.text.x = element_text(angle = 20, vjust = 1, hjust=1,size= sizeHere1,face="bold"),axis.text.y = element_text(size = sizeHere2,face="bold"), 
@@ -381,7 +367,7 @@ makeBubble <- function(pathHere, patternHere, sizeHere1,sizeHere2, saveMessage){
   save(comSFDat,file=paste0(pathHere,saveMessage))
   
   print(p.comp)
-  return(p.comp)
+  return()
 }
 
 #_____________________________________________________________________________________________________________________________________
@@ -409,4 +395,92 @@ generate_plot <- function(file_path, title) {
                xaxis = list(title = "Coexpression Modules", tickangle = -45, tickfont = list(size = 12, family = "Arial Black")),
                yaxis = list(title = "", tickfont = list(size = 9, family = "Arial")),
                margin = list(b = 100))
+}
+
+#_____________________________________________________________________________________________________________________________________
+# Function to make volcano plot
+make_volcano <- function(df_eff, df_p, trait, platform,
+                         p_threshold = 0.05,
+                         effect_threshold = 0,
+                         top_n = 10) {
+  
+  df <- data.frame(
+    Protein = rownames(df_eff),
+    Effect  = df_eff[[trait]],
+    Pvalue  = df_p[[trait]]
+  ) %>%
+    mutate(
+      logP = -log10(Pvalue),
+      Significance = case_when(
+        Pvalue < p_threshold & Effect > 0 ~ "Up",
+        Pvalue < p_threshold & Effect < 0 ~ "Down",
+        TRUE ~ "NS"
+      )
+    )
+  
+  # Subset significant proteins (Up or Down)
+  df_sig <- df %>% filter(Significance %in% c("Up", "Down"))
+  
+  # Select top N for labeling within Up and Down separately
+  df_labels <- df_sig %>%
+    group_by(Significance) %>%
+    arrange(Pvalue) %>%
+    slice_head(n = top_n) %>%
+    ungroup()
+  
+  p <- ggplot(df, aes(x = Effect, y = logP)) +
+    geom_point(aes(color = Significance), alpha = 0.7, size = 2) +
+    scale_color_manual(values = c("Up" = "firebrick", "Down" = "darkgreen", "NS" = "grey50")) +
+    geom_vline(xintercept = effect_threshold, linetype = "dashed") +
+    geom_hline(yintercept = -log10(p_threshold), linetype = "dashed") +
+    geom_text_repel(
+      data = df_labels,
+      aes(label = Protein),
+      size = 3,
+      max.overlaps = Inf
+    ) +
+    theme_minimal(base_size = 14) +
+    xlab("Effect Size (β)") +
+    ylab("-log10(p-value)") +
+    ggtitle(paste0(Trait, " (", platform, ")"))
+  
+  return(p)
+}
+
+make_volcano_panel <- function(trait, effect_list, pval_list) {
+  
+  p1 <- make_volcano(effect_list$Olink,  pval_list$Olink,  trait, "Olink")
+  p2 <- make_volcano(effect_list$BEADdel, pval_list$BEADdel, trait, "BEADdel")
+  p3 <- make_volcano(effect_list$NONdel,  pval_list$NONdel, trait, "NONdel")
+  
+  # Combine horizontally
+  panel <- p1 + p2 + p3 + plot_layout(ncol = 3)
+  
+  return(panel)
+}
+
+make_volcano_plotly <- function(df_eff, df_p, trait, platform) {
+  
+  df <- data.frame(
+    Protein = rownames(df_eff),
+    Effect  = df_eff[[trait]],
+    Pvalue  = df_p[[trait]]
+  ) %>%
+    mutate(logP = -log10(Pvalue))
+  
+  plot_ly(
+    df,
+    x = ~Effect,
+    y = ~logP,
+    text = ~Protein,
+    type = "scatter",
+    mode = "markers",
+    hoverinfo = "text",
+    marker = list(size = 7, opacity = 0.6)
+  ) %>%
+    layout(
+      title = paste0("Interactive Volcano: ", trait, " (", platform, ")"),
+      xaxis = list(title = "Effect Size"),
+      yaxis = list(title = "-log10(p-value)")
+    )
 }

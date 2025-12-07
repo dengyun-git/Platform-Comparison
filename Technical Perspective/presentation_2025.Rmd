@@ -2,8 +2,8 @@
 title: |
   Comparative Analysis of CSF Proteomics Across MS and Olink Platforms
   and Quality Control Validation of MS Data
-author: "Yun Deng"
-date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+# author: "Yun Deng"
+# date: "`r format(Sys.Date(), '%Y-%m-%d')`"
 output:
   html_document:
     toc: true
@@ -527,7 +527,3 @@ grid.arrange(
   nrow = 1
 )
 ```
-
-#```{r}
-# Rscript -e "rmarkdown::render('presentation_2025.Rmd', output_dir = '/home/rstudio/workspace/Data Collection/output_report/')"
-#```
