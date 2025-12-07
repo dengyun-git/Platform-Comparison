@@ -131,6 +131,11 @@ Olink_merged <- cbind(
 )
 Olink_ProF_matchClinic <- Olink_ProF[commonID3, ,drop = FALSE]
 
+save(Clinic_MetaF_All, Clinic_MetaF, 
+     Olink_merged, Olink_ProF, Olink_ProF_matchClinic, 
+     BEADdel_merged, BEADdel_ProF, BEADdel_ProF_matchClinic,
+     NONdel_merged, NONdel_ProF, NONdel_ProF_matchClinic, file = paste0(inputPath, "output_report/Load_Data_For_Report.rdata"))
+
 ##########################
 ##########################
 # ClinicaL Variable View
@@ -576,12 +581,3 @@ for (pathBase in pathBaseList){
 }
 
 dev.off()
-
-
-#########################################################################################
-#########################################################################################
-# Summary of Regression Algorithms Between Protein as Response Variable and as Predictor
-#########################################################################################
-#########################################################################################
-
-

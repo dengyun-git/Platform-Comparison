@@ -255,10 +255,10 @@ ViewClinincalVar <- function(cat_vars, num_vars, Clinic_MetaF_Here){
       geom_bar(fill = "#1f78b4", alpha = 0.7) +
       theme_bw(base_size = 12) +
       theme(
-        axis.text.x = element_text(size = 12, color = "black", angle = 20, hjust = 1),
-        axis.text.y = element_text(size = 12, color = "black"),
-        axis.title.x = element_text(size = 14, color = "black", face = "bold"),
-        axis.title.y = element_text(size = 14, color = "black", face = "bold"),
+        axis.text.x = element_text(size = 8, color = "black", angle = 20, hjust = 1),
+        axis.text.y = element_text(size = 8, color = "black"),
+        axis.title.x = element_text(size = 10, color = "black", face = "bold"),
+        axis.title.y = element_text(size = 10, color = "black", face = "bold"),
         plot.title = element_blank()  # remove individual plot title
       ) +
       labs(x = var, y = "Count")
@@ -276,10 +276,10 @@ ViewClinincalVar <- function(cat_vars, num_vars, Clinic_MetaF_Here){
       geom_density(color = "red", linewidth = 1) +
       theme_bw(base_size = 12) +
       theme(
-        axis.text.x = element_text(size = 12, color = "black"),
-        axis.text.y = element_text(size = 12, color = "black"),
-        axis.title.x = element_text(size = 14, color = "black", face = "bold"),
-        axis.title.y = element_text(size = 14, color = "black", face = "bold"),
+        axis.text.x = element_text(size = 8, color = "black"),
+        axis.text.y = element_text(size = 8, color = "black"),
+        axis.title.x = element_text(size = 10, color = "black", face = "bold"),
+        axis.title.y = element_text(size = 10, color = "black", face = "bold"),
         plot.title = element_blank()  # remove individual plot title
       ) +
       labs(x = var, y = "Density")
@@ -372,30 +372,47 @@ makeBubble <- function(pathHere, patternHere, sizeHere1,sizeHere2, saveMessage){
 
 #_____________________________________________________________________________________________________________________________________
 # Function to generate interactive enrichment testing plot
-generate_plot <- function(file_path, title) {
+generate_interactive_pathway_plot <- function(file_path, titleMessage) {
   load(file = file_path)
   
-  plot_ly(comSFDat,
-          type = 'scatter',
-          mode = 'markers',
-          x = ~ factor(resource),
-          y = ~pathway,       
-          marker = list(size = ~-log(pval), sizeref = 0.3, sizemode = 'area',
-                        color = ~overlap / size, color = seq(0, 39),
-                        sizebar = list(title = "-log(pvalue)"),
-                        colorbar = list(title = 'Protein Ratio'),
-                        colorscale = 'Viridis',
-                        reversescale = TRUE),
-          hovertemplate = paste(
-            "<b>pathway: %{y}</b><br><br>",
-            "<b>module %{x}</b><br><br>",
-            "Proteins Driving Pathway Significance:\n %{text}",
-            "<extra></extra>")
-  ) %>% layout(title = title,
-               xaxis = list(title = "Coexpression Modules", tickangle = -45, tickfont = list(size = 12, family = "Arial Black")),
-               yaxis = list(title = "", tickfont = list(size = 9, family = "Arial")),
-               margin = list(b = 100))
+  # Ensure leadingEdge is a character vector (collapse if it's a list or vector)
+  comSFDat$hover_text <- sapply(comSFDat$leadingEdge, function(x) {
+    if (is.null(x)) return("")
+    paste(x, collapse = ", ")
+  })
+  
+  plot_ly(
+    comSFDat,
+    type = 'scatter',
+    mode = 'markers',
+    x = ~factor(resource),
+    y = ~pathway,
+    marker = list(
+      size = ~-log(pval),
+      sizeref = 0.3,
+      sizemode = 'area',
+      color = ~NES,
+      colorscale = 'Viridis',
+      reversescale = TRUE,
+      colorbar = list(title = 'NES'),
+      sizebar = list(title = "-log(pvalue)")
+    ),
+    text = ~hover_text,  # Use the processed hover text
+    hovertemplate = paste(
+      "<b>Pathway:</b> %{y}<br>",
+      "<b>Module:</b> %{x}<br>",
+      "<b>Proteins Driving Pathway:</b> %{text}<extra></extra>"
+    )
+  ) %>%
+    layout(
+      title = titleMessage,
+      xaxis = list(title = "Platform", tickangle = -45,
+                   tickfont = list(size = 10, family = "Arial Black")),
+      yaxis = list(title = "", tickfont = list(size = 10, family = "Arial Black")),
+      margin = list(b = 100)
+    )
 }
+
 
 #_____________________________________________________________________________________________________________________________________
 # Function to make volcano plot

@@ -76,13 +76,10 @@ DEL_ProMap <- read_excel(paste0(inputPath, "oxf-qc2-als-mass-spectometry-wb-geni
 NON_ProMap <- read_excel(paste0(inputPath, "oxf-qc2-als-mass-spectometry-wb-genial-hazelnut-7025/Data/output/NONdel/SAMPLE/NONDEPLETED_ProteinMapping.xlsx"))
 
 ### Read in two datasets
-DEL_Sample <-  read.csv(paste0(inputPath, "oxf-qc2-als-mass-spectometry-wb-genial-hazelnut-7025/Data/output/BEADdel/SAMPLE/QCed_Frame.csv"), row.names=1)
+DEL_Sample <-  read.csv(paste0(inputPath, "oxf-qc2-als-mass-spectometry-wb-genial-hazelnut-7025/Data/output/BEADdel/SAMPLE/ProDat_QCed.csv"), row.names=1)
 
-NON_Sample <- read.csv(paste0(inputPath,"oxf-qc2-als-mass-spectometry-wb-genial-hazelnut-7025/Data/output/NONdel/SAMPLE/QCed_Frame.csv"), row.names=1)
+NON_Sample <- read.csv(paste0(inputPath,"oxf-qc2-als-mass-spectometry-wb-genial-hazelnut-7025/Data/output/NONdel/SAMPLE/ProDat_QCed.csv"), row.names=1)
 
-if(colnames(DEL_Sample)[1] == "PlateID"){
-  DEL_Sample <- DEL_Sample[,-1]
-  NON_Sample <- NON_Sample[,-1]}
 ### Using the Entrez Gene Naming scheme
 colnames(DEL_Sample) <- sapply(colnames(DEL_Sample), function(x){DEL_ProMap[which(DEL_ProMap$Protein.Group==x),"Genes"]})
 colnames(NON_Sample) <- sapply(colnames(NON_Sample), function(x){NON_ProMap[which(NON_ProMap$Protein.Group==x),"Genes"]})
@@ -100,13 +97,6 @@ Olink_Frame <- read.csv(paste0(inputPath, "Data-CSF/oxf-da28-opdc-als-multiple-c
 # colnames(Olink_Frame)[grep("_",colnames(Olink_Frame))]
 # colnames(DEL_Sample_Raw)[grep("\\.",colnames(DEL_Sample_Raw))]
 # colnames(NON_Sample_Raw)[grep("\\.",colnames(NON_Sample_Raw))]
-
-### Manually change some protein mapping of Olink to match MS
-colnames(Olink_Frame)[which(colnames(Olink_Frame) == "HLA.A")] = "HLA-A"
-colnames(Olink_Frame)[which(colnames(Olink_Frame) == "HLA.E")] = "HLA-E"
-colnames(Olink_Frame)[which(colnames(Olink_Frame) == "HLA.DRA")] = "HLA-DRA"
-colnames(Olink_Frame) <- gsub("_", ".", colnames(Olink_Frame))
-
 ```
 
 ```{r, read in Color data from Olink and Community results, echo=FALSE, warning=FALSE, message=FALSE}
