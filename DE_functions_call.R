@@ -392,6 +392,11 @@ generate_interactive_pathway_plot <- function(file_path, titleMessage) {
     )
   }
   
+  # --- FIX: force leadingEdge to be list-column ---
+  if (!is.list(comSFDat$leadingEdge)) {
+    comSFDat$leadingEdge <- as.list(comSFDat$leadingEdge)
+  }
+  
   # Prepare hover text (collapse leadingEdge)
   comSFDat$hover_text <- sapply(comSFDat$leadingEdge, function(x) {
     if (is.null(x)) return("")
