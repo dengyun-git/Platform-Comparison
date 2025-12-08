@@ -392,15 +392,15 @@ generate_interactive_pathway_plot <- function(file_path, titleMessage) {
       sizeref = 0.3,
       sizemode = 'area',
       color = ~NES,
-      colorscale = 'Viridis',
-      reversescale = TRUE,
+      colorscale = 'RdYlGn',
+      reversescale = FALSE,
       colorbar = list(title = 'NES'),
       sizebar = list(title = "-log(pvalue)")
     ),
-    text = ~hover_text,  # Use the processed hover text
+    text = ~hover_text,  
     hovertemplate = paste(
       "<b>Pathway:</b> %{y}<br>",
-      "<b>Module:</b> %{x}<br>",
+      "<b>Platform:</b> %{x}<br>",
       "<b>Proteins Driving Pathway:</b> %{text}<extra></extra>"
     )
   ) %>%

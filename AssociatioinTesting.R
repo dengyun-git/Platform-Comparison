@@ -169,6 +169,7 @@ BEADdel_ClinicVar_View <- ViewClinincalVar(cat_vars, num_vars, BEADdel_merged)
 NONdel_ClinicVar_View <- ViewClinincalVar(cat_vars, num_vars, NONdel_merged)
 
 save(All_ClinicVar_View, Olink_ClinicVar_View, BEADdel_ClinicVar_View, NONdel_ClinicVar_View, file = paste0(intermediatePath, "ClinicVar_View.Rdata"))
+
 ########################
 ########################
 # Association Testing
@@ -318,6 +319,8 @@ compute_overlap <- function(var) {
 # Compute overlaps for each var
 overlap_list <- lapply(varAll_List, compute_overlap)
 names(overlap_list) <- varAll_List
+
+colnames(summary_df)[1] <- "ClinicalVar"
 
 # Write summary
 write.csv(summary_df, file = paste0(outPath, "overlap_summary_counts.csv"), 
@@ -583,7 +586,7 @@ for (pathBase in pathBaseList){
 dev.off()
 
 ply_list <- vector(mode = "list", length = length(Enrich_Rdat_files))
-names(ply_list) <- sub(".rdat", "", Enrich_Rdat_files)
+names(ply_list) <- sub(".rdata", "", Enrich_Rdat_files)
 for (ct in seq_along(Enrich_Rdat_files)){
   ply_list[[ct]] <- generate_interactive_pathway_plot(paste0(intermediatePath, Enrich_Rdat_files[ct]), names(ply_list)[ct])
 }
