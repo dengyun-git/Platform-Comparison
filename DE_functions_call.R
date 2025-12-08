@@ -392,18 +392,27 @@ generate_interactive_pathway_plot <- function(file_path, titleMessage) {
     )
   }
   
-  # --- FIX: force leadingEdge to be list-column ---
-  if (!is.list(comSFDat$leadingEdge)) {
-    comSFDat$leadingEdge <- as.list(comSFDat$leadingEdge)
-  }
+  # ---- standardize leadingEdge, ensure always split correctly ----
+  comSFDat$text <- sapply(comSFDat$leadingEdge, function(x) {
+    
+    # Handle NA or NULL
+    if (is.null(x) || is.na(x)) return("")
+    
+    # If it's a single string like "F10 COL4A2 TFPI"
+    if (is.character(x) && length(x) == 1) {
+      parts <- unlist(strsplit(x, "\\s+"))   # split on any whitespace
+      return(paste(parts, collapse = ", "))
+    }
+    
+    # If already a vector like c("F10","COL4A2","TFPI")
+    if (is.character(x) && length(x) > 1) {
+      return(paste(x, collapse = ", "))
+    }
+    
+    return("")
+  }) 
   
-  # Prepare hover text (collapse leadingEdge)
-  comSFDat$hover_text <- sapply(comSFDat$leadingEdge, function(x) {
-    if (is.null(x)) return("")
-    paste(x, collapse = ", ")
-  })
-  
-  # Build interactive plot
+  # ---- Interactive plot ----
   ply <- plot_ly(
     comSFDat,
     type = 'scatter',
@@ -417,21 +426,19 @@ generate_interactive_pathway_plot <- function(file_path, titleMessage) {
       color = ~NES,
       colorscale = 'RdYlGn',
       reversescale = FALSE,
-      colorbar = list(title = 'NES'),
-      sizebar = list(title = "-log(pvalue)")
+      colorbar = list(title = 'NES')
     ),
-    text = ~hover_text,
+    text = ~text,
     hovertemplate = paste(
       "<b>Pathway:</b> %{y}<br>",
       "<b>Platform:</b> %{x}<br>",
-      "<b>Proteins Driving Pathway:</b> %{text}<extra></extra>"
+      "<b>Leading Edge Protein:</b> %{text}<extra></extra>"
     )
   ) %>%
     layout(
       title = titleMessage,
-      xaxis = list(title = "Platform", tickangle = -45,
-                   tickfont = list(size = 10, family = "Arial Black")),
-      yaxis = list(title = "", tickfont = list(size = 10, family = "Arial Black")),
+      xaxis = list(title = "Platform", tickangle = -45),
+      yaxis = list(title = ""),
       margin = list(b = 100)
     )
   
@@ -539,7 +546,7 @@ make_volcano_plotly <- function(df_eff, df_p, trait, platform, p_threshold = 0.0
   ) %>%
     layout(
       title = list(
-        text = paste0(trait, " (", platform, ")"),
+        text = paste0("Interactive Volcano: ", trait, " (", platform, ")"),
         font = list(size = 20, color = "black", family = "Arial", bold = TRUE),
         x = 0.5,
         y = 0.96  # lower the title slightly
