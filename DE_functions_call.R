@@ -335,17 +335,16 @@ makeBubble <- function(pathHere, patternHere, sizeHere1,sizeHere2, saveMessage){
   pThresh = 0.05
   for(fileSg in fileList){
     comSF <- read.csv(paste0(pathHere,fileSg),sep="\t",header=TRUE)[,c("pathway","pval","padj","log2err","ES", "NES", "size", "leadingEdge")] 
-    comSF <- comSF[which(comSF$padj<pThresh),]
-    YNSignificant <- ifelse(comSF$padj<0.05,"Y","N")
-    comSF<- cbind(comSF,YNSignificant)
-    colnames(comSF)[ncol(comSF)] <-"YNSignificant"
-    comSF <- comSF[order(comSF$padj),]
+    
+    comSF <- comSF %>%
+      filter(padj < pThresh) %>%
+      mutate(YNSignificant = if_else(padj < 0.05, "Y", "N")) %>%
+      arrange(padj)
+    
     
     addCol <- matrix(rep(resourceLabel[thisC],nrow(comSF)),ncol=1)
-    comSF <-cbind(addCol,comSF)
-    colnames(comSF)[1] <- "resource"
     
-    comSF <- comSF[which(!is.na(comSF$pval)),] 
+    comSF <- comSF %>% mutate(resource = addCol) %>% filter(!is.na(pval))
     
     comSFDat <- rbind(comSFDat,comSF)
     
@@ -373,14 +372,33 @@ makeBubble <- function(pathHere, patternHere, sizeHere1,sizeHere2, saveMessage){
 #_____________________________________________________________________________________________________________________________________
 # Function to generate interactive enrichment testing plot
 generate_interactive_pathway_plot <- function(file_path, titleMessage) {
-  load(file = file_path)
+  load(file = file_path)   # loads comSFDat
   
-  # Ensure leadingEdge is a character vector (collapse if it's a list or vector)
+  # If no enriched pathways, return a blank plot
+  if (!exists("comSFDat") || nrow(comSFDat) == 0) {
+    return(
+      plot_ly() %>%
+        layout(
+          title = titleMessage,
+          xaxis = list(visible = FALSE),
+          yaxis = list(visible = FALSE),
+          annotations = list(
+            text = "No significantly enriched pathways",
+            x = 0.5, y = 0.5,
+            showarrow = FALSE,
+            font = list(size = 14)
+          )
+        )
+    )
+  }
+  
+  # Prepare hover text (collapse leadingEdge)
   comSFDat$hover_text <- sapply(comSFDat$leadingEdge, function(x) {
     if (is.null(x)) return("")
     paste(x, collapse = ", ")
   })
   
+  # Build interactive plot
   ply <- plot_ly(
     comSFDat,
     type = 'scatter',
@@ -397,7 +415,7 @@ generate_interactive_pathway_plot <- function(file_path, titleMessage) {
       colorbar = list(title = 'NES'),
       sizebar = list(title = "-log(pvalue)")
     ),
-    text = ~hover_text,  
+    text = ~hover_text,
     hovertemplate = paste(
       "<b>Pathway:</b> %{y}<br>",
       "<b>Platform:</b> %{x}<br>",
@@ -411,9 +429,9 @@ generate_interactive_pathway_plot <- function(file_path, titleMessage) {
       yaxis = list(title = "", tickfont = list(size = 10, family = "Arial Black")),
       margin = list(b = 100)
     )
+  
   return(ply)
 }
-
 
 #_____________________________________________________________________________________________________________________________________
 # Function to make volcano plot

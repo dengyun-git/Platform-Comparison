@@ -343,6 +343,9 @@ platformList <- c("Olink", "BEADdel", "NONdel")
 # Vocano Plot
 ######################## 
 ########################
+### traits for testing
+varAll_List <- c("ALSvsHC", "ALSvsDC", "DCvsHC", "BULBARvSpinal", "C9vsNonC9", "BODY_MASS_INDEX", "ALSFRSR_FINE_MOTOR", "ALSFRSR_GROSS_MOTOR", "ALSFRSR_RATE", "ECAS_SCORE")
+
 Olink_eff <- read_df(paste0(outPath, "Olink_result_tbl_EffectSize.csv"))
 BEADdel_eff <- read_df(paste0(outPath, "BEADdel_result_tbl_EffectSize.csv"))
 NONdel_eff <- read_df(paste0(outPath, "NONdel_result_tbl_EffectSize.csv"))
@@ -407,9 +410,6 @@ save(plotly_volcano_list, file = paste0(intermediatePath, "plotly_volcano_list.r
 # Enrichment Testing
 ######################## 
 ########################
-### traits for testing
-varAll_List <- c("ALSvsHC", "ALSvsDC", "DCvsHC", "BULBARvSpinal", "C9vsNonC9", "BODY_MASS_INDEX", "ALSFRSR_FINE_MOTOR", "ALSFRSR_GROSS_MOTOR", "ALSFRSR_RATE", "ECAS_SCORE")
-
 ### Ranking matrix calculation
 Ranks_Olink_AllVar <- Calculate_Ranking_Metric(paste0(outPath, "Olink_result_tbl_p.csv"), 
                                                paste0(outPath, "Olink_result_tbl_EffectSize.csv"))
@@ -509,30 +509,29 @@ for (ClinicVar in varAll_List) {
   }
 }
 
+save(SigPath_List, file = paste0(intermediatePath, "SigPath_List.rdata"))
+
 ### Bubble plot to show the significantly enriched pathways
+pdf(paste0(outPath, "DifferentialExpression_PathwayEnrichment.pdf"))
+
+for (pathBase in pathBaseList){
+  for(ClinicVar in varAll_List){
+    patternHere <- paste0(pathBase, "_", ClinicVar)
+    makeBubble(intermediatePath, patternHere, 5, 5, paste0(patternHere, ".rdata"))
+  }
+}
+
+dev.off()
+
 Enrich_Rdat_files <- outer(
   pathBaseList,
   varAll_List,
   Vectorize(function(p, v) paste0(p, "_", v, ".rdata"))
 )
 
-Enrich_Rdat_files <- as.vector(Enrich_Rdat_files)
-
-pdf(paste0(outPath, "DifferentialExpression_PathwayEnrichment.pdf"))
-
-fileCt <- 1
-for (pathBase in pathBaseList){
-  for(ClinicVar in varAll_List){
-    patternHere <- paste0(pathBase, "_", ClinicVar)
-    makeBubble(intermediatePath, patternHere, 5, 5, Enrich_Rdat_files[fileCt])
-    fileCt <- fileCt + 1
-  }
-}
-
-dev.off()
-
 ply_list <- vector(mode = "list", length = length(Enrich_Rdat_files))
 names(ply_list) <- sub(".rdata", "", Enrich_Rdat_files)
+
 for (ct in seq_along(Enrich_Rdat_files)){
   ply_list[[ct]] <- generate_interactive_pathway_plot(paste0(intermediatePath, Enrich_Rdat_files[ct]), names(ply_list)[ct])
 }

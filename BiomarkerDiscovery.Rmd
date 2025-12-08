@@ -49,7 +49,7 @@ Two complementary approaches were used to explore potential protei biomarkers:
 These approaches were chosen to capture different structural patterns in the proteomic data.
 
 **3. Analysis Scope:**  
-Both differential expression analysis and association testing were performed per platform and per clinical trait.
+Both differential expression analysis and association testing were performed separately for each platform and each clinical trait. Statistical significance was defined as an adjusted p-value < 0.05, after correcting for multiple testing across all proteins evaluated.
 
 **4. Clinical Variables:**  
 The clinical variables included in this report are:  
@@ -194,7 +194,6 @@ for (trait in varAll_List) {
     uniq_id2 <- sample(1e6, 1)
     
     out <- c(out, knitr::knit_expand(text = c(
-      paste0("### Interactive Volcano Plot - ", plat, "\n\n"),
       "<div style='text-align: center;'>",  # start centering
       paste0("```{r InteractiveVolcano_", trait, "_", plat, "_", uniq_id2, 
              ", echo=FALSE, fig.width=8, fig.height=5}"),
@@ -214,8 +213,8 @@ for (trait in varAll_List) {
 
 For each pathway database, gene sets containing between 10 and 1000 genes (inclusive) were included in the Gene Set Enrichment Analysis (GSEA).
 
-- Positive NES with significant adjusted p-value (`padj`) indicates that the pathway is activated/upregulated in the condition of interest.  
-- Negative NES with significant `padj` indicates that the pathway is suppressed/downregulated.  
+- Positive NES with significant adjusted p-value (padj) indicates that the pathway is activated/upregulated in the condition of interest.  
+- Negative NES with significant padj indicates that the pathway is suppressed/downregulated.  
 - Leading edge proteins are the subset of proteins driving the significance of the corresponding pathways.
 - Blank indicates that no significantly enriched pathways were identified.
 

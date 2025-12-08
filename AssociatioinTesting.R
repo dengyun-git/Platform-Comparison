@@ -557,33 +557,32 @@ for (ClinicVar in varAll_List) {
         filter(padj < 0.05) %>%
         arrange(padj)
       
-      # save into SigPath_List (IMPORTANT FIX: moved inside loop!)
+      # save into SigPath_List
       SigPath_List[[ClinicVar]][[platform]][[pathBaseList[GScont]]] <- sig_fgseaPath
     }
   }
 }
 
+save(SigPath_List, file = paste0(intermediatePath, "SigPath_List.rdata"))
+
 ### Bubble plot to show the significantly enriched pathways
+
+pdf(paste0(outPath, "AssociationTesting_PathwayEnrichment.pdf"))
+
+for (pathBase in pathBaseList){
+  for(ClinicVar in varAll_List){
+    patternHere <- paste0(pathBase, "_", ClinicVar)
+    makeBubble(intermediatePath, patternHere, 5, 5, paste0(patternHere, ".rdata"))
+  }
+}
+
+dev.off()
+
 Enrich_Rdat_files <- outer(
   pathBaseList,
   varAll_List,
   Vectorize(function(p, v) paste0(p, "_", v, ".rdata"))
 )
-
-Enrich_Rdat_files <- as.vector(Enrich_Rdat_files)
-
-pdf(paste0(outPath, "AssociationTesting_PathwayEnrichment.pdf"))
-
-fileCt <- 1
-for (pathBase in pathBaseList){
-  for(ClinicVar in varAll_List){
-    patternHere <- paste0(pathBase, "_", ClinicVar)
-    makeBubble(intermediatePath, patternHere, 5, 5, Enrich_Rdat_files[fileCt])
-    fileCt <- fileCt + 1
-  }
-}
-
-dev.off()
 
 ply_list <- vector(mode = "list", length = length(Enrich_Rdat_files))
 names(ply_list) <- sub(".rdata", "", Enrich_Rdat_files)
