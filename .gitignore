@@ -1,0 +1,79 @@
+# R session files
+.Rhistory
+.Rapp.history
+.RData
+.Ruserdata
+
+# RStudio project files
+.Rproj.user/
+*.Rproj
+
+# R package build artifacts
+.Rbuildignore
+.Rcheck/
+
+# Temporary files created by R
+*.Rout
+*.Rout.save
+*.RDataTmp
+*.Rtmp
+*.Rprof
+/*.tar.gz
+
+# Cache and compiled files
+*.o
+*.so
+*.dll
+*.pyc
+*.rds
+*.qs
+*.fst
+
+# R Markdown caches and temporary files
+*_cache/
+cache/
+*/cache/
+*.utf8.md
+*.knit.md
+*.nb.html
+
+# Quarto
+*.qmd~
+.quarto/
+
+# Large data files (common for analysis projects)
+data/
+*.csv
+*.tsv
+*.xlsx
+*.sav
+*.zip
+*.gz
+*.h5
+*.rda
+*.hdf5
+*.feather
+*.parquet
+
+# Logs
+*.log
+
+# Output directories (figures, results)
+output/
+results/
+figures/
+plots/
+
+# Python virtual environment
+venv/
+.env/
+__pycache__/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Misc editor backups
+*~
+*.swp
+*.swo
