@@ -43,7 +43,8 @@ We analyzed proteomic data from three different platforms:
 - Mass Spectrometry without bead depletion (NONdel, referred to as NONdel in this report).
 
 **2.Analytical Approaches:**  
-Two complementary approaches were used to explore potential protei biomarkers:  
+Two complementary approaches were used to explore potential protei biomarkers: 
+
 - Protein Differential Expression Analysis: Regression models with protein levels as the response variable.  
 - Association Testing: Regression models with protein levels as the predictor variable.  
 
@@ -54,6 +55,7 @@ Both differential expression analysis and association testing were performed sep
 
 **4. Clinical Variables:**  
 The clinical variables included in this report are:  
+
 - `"ALSvsHC"`, `"ALSvsDC"`, `"DCvsHC"`, `"ALSFRSR_FINE_MOTOR"`, `"ALSFRSR_GROSS_MOTOR"`, `"ALSFRSR_RATE"`, `"ECAS_SCORE"`  
 - `"BULBARvSpinal"` – derived from `WEAKNESS_SITE`, where `"GENERALISED"`, `"LOWER LIMB"`, `"RESPIRATORY"`, `"TRUNCAL"`, and `"UPPER LIMB"` are grouped as `"Spinal"`  
 - `"C9vsNonC9"` – derived from `PATHOGENIC_VARIANT`, where `"KIF5A", "MAPT", "SBMA", "SOD1", "SPG7", "TBK1"` are grouped as NonC9 carriers  
@@ -62,10 +64,12 @@ The clinical variables included in this report are:
 - `ALSFRSR_FINE_MOTOR` and `ALSFRSR_GROSS_MOTOR` – Box-Cox transformed with a maximum value of 12
 
 **5. Handling Missing Values and Confounders:**  
+
 - Missing values were excluded on a per-regression basis.  
 - Age and gender were included as confounding factors in all regression models.
 
 **6. Pathway Enrichment Testing:**  
+
 - Performed per platform and per clinical trait.  
 - The pathway databases included are: `"GOBP"`, `"GOMF"`, `"GOCC"`, `"REACTOME"`, `"KEGG"`, `"Biocarta"`, and `"WikiPathways"`.  
 - Ranked Gene Set Enrichment Testing was adopted, using the ranking metric:  
@@ -321,7 +325,7 @@ for (trait in varAll_List) {
 # 7 - Summary Table of Overlapping Biomarker Candidate{.tabset} 
 
 # 7.1 - Combined Biomarker Candidate from Two Complemetary Approaches with Comparisons Acorss the Three Platforms {.tabset} 
-## Protein Names in Display{.tabset} 
+## Clinical Trait vs Platform — Each Entry Represents A Set of Biomarker Candidates {.tabset} 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 SigProSummary_AT <- read.csv(paste0(outPath1, "SigProSummary.csv"))
 SigProSummary_DE <- read.csv(paste0(outPath2, "SigProSummary.csv"))
@@ -373,67 +377,10 @@ SigProSummary <- bind_rows(result_list)
 DT::datatable(SigProSummary)
 ```
 
-## Overlap Counts Across Platforms{.tabset} 
+## Overlap Across Platforms {.tabset} 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
-split_prots <- function(x) {
-  if (is.na(x) || length(x) == 0) return(character(0))
-  x <- as.character(x)
-  x <- trimws(x)
-  if (x == "") return(character(0))
-  v <- unlist(strsplit(x, "/", fixed = TRUE))
-  v <- trimws(v)
-  v <- v[v != ""]
-  # remove NA-like strings
-  v <- v[!is.na(v) & v != "NA"]
-  unique(v)
-}
-
-summary_list <- lapply(varAll_List, function(var) {
-  # Get the row for this ClinicalVar (assume one row per ClinicalVar)
-  row <- SigProSummary %>% filter(ClinicalVar == var) %>% slice(1)
-  
-  # Split protein strings into vectors (handle empty / NA)
-  s_bead <- split_prots(row$BEADdel)
-  s_non  <- split_prots(row$NONdel)
-  s_ol   <- split_prots(row$Olink)
-  
-  # Compute overlaps (vectors)
-  overlap_BEADdel_NONdel <- intersect(s_bead, s_non)
-  overlap_BEADdel_Olink  <- intersect(s_bead, s_ol)
-  overlap_NONdel_Olink   <- intersect(s_non, s_ol)
-  overlap_all3           <- Reduce(intersect, list(s_bead, s_non, s_ol))
-  
-  # Helper to collapse names or return NA if none
-  collapse_or_na <- function(vec) {
-    if (length(vec) == 0) return(NA_character_)
-    paste(vec, collapse = ", ")
-  }
-  
-  # Return summary data.frame with exact names
-  data.frame(
-    ClinicalVar = var,
-    Comparison = c("BEADdel vs NONdel", "BEADdel vs Olink", "NONdel vs Olink", "All three"),
-    nProteins  = c(
-      length(overlap_BEADdel_NONdel),
-      length(overlap_BEADdel_Olink),
-      length(overlap_NONdel_Olink),
-      length(overlap_all3)
-    ),
-    Proteins = c(
-      collapse_or_na(overlap_BEADdel_NONdel),
-      collapse_or_na(overlap_BEADdel_Olink),
-      collapse_or_na(overlap_NONdel_Olink),
-      collapse_or_na(overlap_all3)
-    ),
-    stringsAsFactors = FALSE
-  )
-})
-
-# Combine into a single data frame
-summary_df <- bind_rows(summary_list)
-
-# View interactive table
-DT::datatable(summary_df, options = list(pageLength = 10))
+OverlapTable_All <- GetOverlapTable(varAll_List, SigProSummary)
+DT::datatable(OverlapTable_All)
 
 split_proteins <- function(x) {
   if (is.na(x) || x == "") return(character(0))
@@ -444,7 +391,7 @@ split_proteins <- function(x) {
 }
 
 # Extract proteins from all three columns
-all_proteins_list <- lapply(SigProSummary %>% select(BEADdel, NONdel, Olink),
+all_proteins_list <- lapply(SigProSummary %>% dplyr::select(BEADdel, NONdel, Olink),
                             function(col) unlist(lapply(col, split_proteins)))
 
 # Combine and get unique proteins
@@ -452,8 +399,7 @@ SigPro_List <- unique(unlist(all_proteins_list))
 
 ```
 
-## All the biomarker candidate across platforms and across all the clinical variables{.tabset} 
-
+## Details for each biomarker candidate {.tabset}
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 # helper to split slash-delimited protein strings
 split_proteins <- function(x) {
@@ -475,7 +421,7 @@ sig_in_nondel <- unique(unlist(lapply(SigProSummary$NONdel,  split_proteins)))
 # all proteins list (you may already have SigPro_List)
 SigPro_List <- sort(unique(SigPro_List))
 
-# create an empty results data.frame
+# create an empty results data.frame, with placeholders
 res_df <- data.frame(
   Protein = SigPro_List,
   Exist_in_Olink     = NA_character_,
@@ -484,13 +430,17 @@ res_df <- data.frame(
   Significant_in_Olink   = NA_character_,
   Significant_in_BEADdel = NA_character_,
   Significant_in_NONdel  = NA_character_,
-  HighLowAbundance_DilutionBin_in_Olink = NA_character_,  # placeholder
-  Protein_Detectability_in_Olink_percent = NA_character_,        # placeholder
-  stringsAsFactors = FALSE
+  Corr_Olink_BEADdel = NA_real_,        
+  Corr_Olink_NONdel  = NA_real_,        
+  Corr_BEADdel_NONdel = NA_real_,      
+  `DilutionBin_Olink (A~D: high → low abundance)` = NA_character_,  
+  Protein_Detectability_Olink_percent = NA_character_,              
+  stringsAsFactors = FALSE,
+  check.names = FALSE
 )
 
 # fill existence columns based on whether protein name appears in the expression data column names
-# (assumes Olink_ProF, BEADdel_ProF, NONdel_ProF are data.frames / matrices with proteins as column names)
+
 for (i in seq_len(nrow(res_df))) {
   p <- res_df$Protein[i]
   res_df$Exist_in_Olink[i]   <- if (p %in% colnames(Olink_ProF))   "YES" else "NO"
@@ -502,6 +452,39 @@ for (i in seq_len(nrow(res_df))) {
   res_df$Significant_in_BEADdel[i] <- if (p %in% sig_in_bead)   "YES" else "NO"
   res_df$Significant_in_NONdel[i]  <- if (p %in% sig_in_nondel) "YES" else "NO"
 }
+
+
+# Function to compute correlation coefficient between pairwise platforms
+compute_corr <- function(protein, df1, df2) {
+  # Find common samples
+  commonSamp <- intersect(rownames(df1), rownames(df2))
+  
+  # Subset to common samples
+  df1 <- df1[commonSamp, , drop = FALSE]
+  df2 <- df2[commonSamp, , drop = FALSE]
+  
+  # Check protein exists in both datasets
+  if (!(protein %in% colnames(df1)) || !(protein %in% colnames(df2))) return(NA_real_)
+  
+  # Extract vectors
+  x <- df1[, protein]
+  y <- df2[, protein]
+  
+  # Compute correlation, ignoring NA
+  signif(cor(x, y, use = "pairwise.complete.obs"), digits=4)
+}
+
+res_df$Corr_Olink_BEADdel <- sapply(res_df$Protein, compute_corr,
+                                    df1 = Olink_ProF_matchClinic,
+                                    df2 = BEADdel_ProF_matchClinic)
+
+res_df$Corr_Olink_NONdel <- sapply(res_df$Protein, compute_corr,
+                                   df1 = Olink_ProF_matchClinic,
+                                   df2 = NONdel_ProF_matchClinic)
+
+res_df$Corr_BEADdel_NONdel <- sapply(res_df$Protein, compute_corr,
+                                     df1 = BEADdel_ProF_matchClinic,
+                                     df2 = NONdel_ProF_matchClinic)
 
 # Make sure types are consistent
 res_df <- res_df %>%
@@ -515,39 +498,46 @@ res_df <- res_df %>%
   )
 
 # Read in the detectability information
-CSF_Pro_Filter_Frame <- read.csv(paste0(inputPath, "Data-CSF/oxf-da28-opdc-als-multiple-cohorts-olink-csf/CSF_Pro_Filter_Frame.csv"), row.names = 1)
-
-res_df$Protein_Detectability_in_Olink <- CSF_Pro_Filter_Frame[res_df$Protein, "Detectability_FIXEDlod_Protein..."]
-
-# Read in Dilution Bins
-
 Raw_Olink_CSF <- read.csv("/home/rstudio/workspace/Data Collection/Data-CSF/oxf-da28-opdc-als-multiple-cohorts-olink-csf/P230192_CSP1-5_CINO_and_C2I2N2O2_EXTENDED_NPX_2024-01-18_cleaned.csv", sep = ";")
 
-res_df$HighLowAbundance_DilutionBin_in_Olink <- sapply(res_df$Protein, function(x){Raw_Olink_CSF$Panel[which(Raw_Olink_CSF$Assay == x)[1]]})
+# Load LOD for proteins
+LOD_sigPro <- Raw_Olink_CSF[unlist(sapply(SigPro_List, function(x) {which(Raw_Olink_CSF$Assay == x)[1]})), "LOD"]
+names(LOD_sigPro) <- SigPro_List
+
+# Calculate detectability per protein across samples
+res_df$Protein_Detectability_Olink_percent <- round(100 * sapply(SigPro_List, function(x) {
+  if (!(x %in% colnames(Olink_ProF_matchClinic))) return(NA_real_)
+  sum(Olink_ProF_matchClinic[, x] > LOD_sigPro[x], na.rm = TRUE) / nrow(Olink_ProF_matchClinic)
+}), 2)
+
+# Read in Dilution Bins
+res_df$`DilutionBin_Olink (A~D: high → low abundance)` <- sapply(res_df$Protein, function(x){Raw_Olink_CSF$Block[which(Raw_Olink_CSF$Assay == x)[1]]})
 
 # View interactive table
-DT::datatable(res_df, options = list(pageLength = 20), rownames = FALSE)
+DT::datatable(res_df, options = list(pageLength = 30), rownames = FALSE, filter = "top")
 
 ```
 
-# 7.2 - Biomarker Candidate Derived from Association Testing with Comparisons Acorss the Three Platforms {.tabset} 
-## Protein Names in Display{.tabset} 
+# 7.2 - Biomarker Candidate Derived from Association Testing with Comparisons Across the Three Platforms {.tabset} 
+## Clinical Trait vs Platform — Each entry represents a set of biomarker candidates{.tabset} 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
-DT::datatable(SigProSummary_DE)
+DT::datatable(SigProSummary_AT, filter = "top")
 ```
-## Overlap Counts{.tabset} 
+## Overlap Across Platforms {.tabset} 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 summary_df_AT <- read.csv(paste0(outPath1, "overlap_summary_counts.csv"))
-DT::datatable(summary_df_AT)
+OverlapTable_AT <- GetOverlapTable(varAll_List, SigProSummary_AT)
+DT::datatable(OverlapTable_AT, filter = "top")
 ```
 
-# 7.3 - Biomarker Candidate Derived from Differential Expression with Comparisons Acorss the Three Platforms {.tabset} 
-## Protein Names in Display{.tabset} 
+# 7.3 - Biomarker Candidate Derived from Differential Expression with Comparisons Across the Three Platforms {.tabset} 
+## Clinical Trait vs Platform — Each entry represents a set of biomarker candidates{.tabset} 
 ```{r, warning=FALSE, message=FALSE}
-DT::datatable(SigProSummary_DE)
+DT::datatable(SigProSummary_DE, filter = "top")
 ```
-## Overlap Counts{.tabset} 
+## Overlap Across Platforms {.tabset} 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 summary_df_DE <- read.csv(paste0(outPath2, "overlap_summary_counts.csv"))
-DT::datatable(summary_df_DE)
+OverlapTable_DE <- GetOverlapTable(varAll_List, SigProSummary_DE)
+DT::datatable(OverlapTable_DE, filter = "top")
 ```

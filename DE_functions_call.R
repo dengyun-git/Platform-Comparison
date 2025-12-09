@@ -535,22 +535,25 @@ make_volcano_plotly <- function(df_eff, df_p, trait, platform, p_threshold = 0.0
     df,
     x = ~Effect,
     y = ~logP,
-    text = ~paste0("Protein: ", Protein,
-                   "<br>Effect: ", round(Effect, 3),
-                   "<br>Adjusted p-value: ", signif(Pvalue, 3),
-                   "<br>Significance: ", Significance),
+    text = ~paste0(
+      "Protein: ", Protein,
+      "<br>Effect: ", round(Effect, 3),
+      "<br>Adjusted p-value: ", signif(Pvalue, 3),
+      "<br>Significance: ", Significance
+    ),
     type = "scatter",
     mode = "markers",
     color = ~Significance,
     colors = c("Up" = "firebrick", "Down" = "darkgreen", "NS" = "grey50"),
-    marker = list(size = 8, opacity = 0.7)
+    marker = list(size = 8, opacity = 0.7),
+    hovertemplate = "%{text}<extra></extra>"
   ) %>%
     layout(
       title = list(
         text = paste0("Interactive Volcano: ", trait, " (", platform, ")"),
         font = list(size = 20, color = "black", family = "Arial", bold = TRUE),
         x = 0.5,
-        y = 0.96  # lower the title slightly
+        y = 0.96
       ),
       xaxis = list(
         title = list(text = "Effect Size (β)", font = list(size = 16, color = "black", family = "Arial", bold = TRUE)),
@@ -566,4 +569,123 @@ make_volcano_plotly <- function(df_eff, df_p, trait, platform, p_threshold = 0.0
       ),
       showlegend = TRUE
     )
+}
+
+
+#_____________________________________________________________________________________________________________________________________
+# Function to generate overlap (across platforms) summary table
+GetOverlapTable<- function(varAll_List, SigProSummary){
+  
+  split_prots <- function(x) {
+    if (is.na(x) || length(x) == 0) return(character(0))
+    x <- as.character(x)
+    x <- trimws(x)
+    if (x == "") return(character(0))
+    v <- unlist(strsplit(x, "/", fixed = TRUE))
+    v <- trimws(v)
+    v <- v[v != ""]
+    # remove NA-like strings
+    v <- v[!is.na(v) & v != "NA"]
+    unique(v)
+  }
+  
+  summary_list <- lapply(varAll_List, function(var) {
+    # Get the row for this ClinicalVar (assume one row per ClinicalVar)
+    row <- SigProSummary %>% filter(ClinicalVar == var) %>% dplyr::slice(1)
+    
+    # Split protein strings into vectors (handle empty / NA)
+    s_bead <- split_prots(row$BEADdel)
+    s_non  <- split_prots(row$NONdel)
+    s_ol   <- split_prots(row$Olink)
+    
+    # Compute overlaps (vectors)
+    overlap_BEADdel_NONdel <- intersect(s_bead, s_non)
+    overlap_BEADdel_Olink  <- intersect(s_bead, s_ol)
+    overlap_NONdel_Olink   <- intersect(s_non, s_ol)
+    overlap_all3           <- Reduce(intersect, list(s_bead, s_non, s_ol))
+    
+    # Helper to collapse names or return NA if none
+    collapse_or_na <- function(vec) {
+      if (length(vec) == 0) return(NA_character_)
+      paste(vec, collapse = ", ")
+    }
+    
+    # Return summary data.frame with exact names
+    data.frame(
+      ClinicalVar = var,
+      Comparison = c("BEADdel vs NONdel", "BEADdel vs Olink", "NONdel vs Olink", "All three"),
+      nProteins  = c(
+        length(overlap_BEADdel_NONdel),
+        length(overlap_BEADdel_Olink),
+        length(overlap_NONdel_Olink),
+        length(overlap_all3)
+      ),
+      Proteins = c(
+        collapse_or_na(overlap_BEADdel_NONdel),
+        collapse_or_na(overlap_BEADdel_Olink),
+        collapse_or_na(overlap_NONdel_Olink),
+        collapse_or_na(overlap_all3)
+      ),
+      stringsAsFactors = FALSE
+    )
+  })
+  
+  # Combine into a single data frame
+  summary_df <- bind_rows(summary_list)
+  
+  return(summary_df)
+}
+  
+#_____________________________________________________________________________________________________________________________________
+# Function to generate overlap (across platforms) summary table
+
+plotVennForClinicalVar <- function(ClinicalVar, SigProSummary) {
+  
+  # Helper to split protein strings safely
+  split_prots <- function(x) {
+    if (is.null(x) || is.na(x) || length(x) == 0) return(character(0))
+    x <- as.character(x)
+    x <- trimws(x)
+    if (x == "") return(character(0))
+    v <- unlist(strsplit(x, "/", fixed = TRUE))
+    v <- trimws(v)
+    v <- v[v != ""]
+    v <- v[!is.na(v) & v != "NA"]
+    unique(v)
+  }
+  
+  # Extract the row for this ClinicalVar
+  row <- SigProSummary %>% filter(ClinicalVar == ClinicalVar)
+  if (nrow(row) == 0) stop("ClinicalVar not found in SigProSummary.")
+  
+  # Extract sets
+  set_BEADdel <- split_prots(row$BEADdel)
+  set_NONdel  <- split_prots(row$NONdel)
+  set_Olink   <- split_prots(row$Olink)
+  
+  # Prepare list for VennDiagram
+  input_list <- list(
+    BEADdel = set_BEADdel,
+    NONdel  = set_NONdel,
+    Olink   = set_Olink
+  )
+  
+  # Clear previous plot
+  grid.newpage()
+  
+  # Plot Venn
+  draw.triple.venn(
+    area1 = length(set_BEADdel),
+    area2 = length(set_NONdel),
+    area3 = length(set_Olink),
+    n12   = length(intersect(set_BEADdel, set_NONdel)),
+    n23   = length(intersect(set_NONdel, set_Olink)),
+    n13   = length(intersect(set_BEADdel, set_Olink)),
+    n123  = length(Reduce(intersect, list(set_BEADdel, set_NONdel, set_Olink))),
+    category = c("BEADdel", "NONdel", "Olink"),
+    fill = c("#FF9999", "#99CCFF", "#99FF99"),
+    cex = 2,
+    cat.cex = 2,
+    main = paste("Venn Diagram for", ClinicalVar)
+  )
 }
