@@ -8,10 +8,10 @@ library(lme4)
 library(nnet)
 library(MASS)
 library(ordinal)
+library(ggplot2)
 library(patchwork)
 library(ggrepel)
 library(plotly)
-
 
 inputPath <- "/home/rstudio/workspace/Data Collection/"
 intermediatePath <- "/home/rstudio/workspace/Data Collection/intermediate_AssociationTesting/"
@@ -160,15 +160,15 @@ num_vars <- c(
 
 varList <- c(cat_vars, num_vars)
 
-All_ClinicVar_View <- ViewClinincalVar(cat_vars, num_vars, Clinic_MetaF)
+All_ClinicVar_View <- ViewClinicalVar(cat_vars, num_vars, Clinic_MetaF)
 
-Olink_ClinicVar_View <- ViewClinincalVar(cat_vars, num_vars, Olink_merged)
+# Olink_ClinicVar_View <- ViewClinicalVar(cat_vars, num_vars, Olink_merged)
+# 
+# BEADdel_ClinicVar_View <- ViewClinicalVar(cat_vars, num_vars, BEADdel_merged)
+# 
+# NONdel_ClinicVar_View <- ViewClinicalVar(cat_vars, num_vars, NONdel_merged)
 
-BEADdel_ClinicVar_View <- ViewClinincalVar(cat_vars, num_vars, BEADdel_merged)
-
-NONdel_ClinicVar_View <- ViewClinincalVar(cat_vars, num_vars, NONdel_merged)
-
-save(All_ClinicVar_View, Olink_ClinicVar_View, BEADdel_ClinicVar_View, NONdel_ClinicVar_View, file = paste0(intermediatePath, "ClinicVar_View.Rdata"))
+save(All_ClinicVar_View, file = paste0(intermediatePath, "ClinicVar_View.Rdata"))
 
 ########################
 ########################

@@ -245,44 +245,45 @@ get_DE_Pvalue_Table_GLM <- function(ProExpF, Merged, covariateList, outPath, whi
 
 #---------------------------------------------------------------------
 # Function to view distribution or composition of clinical variables
-ViewClinincalVar <- function(cat_vars, num_vars, Clinic_MetaF_Here){
+ViewClinicalVar <- function(cat_vars, num_vars, Clinic_MetaF_Here, ncol = 4, bins = 30) {
   # --- 1. Categorical variable plots ---
-  cat_plots <- lapply(cat_vars, function(var){
-    df <- Clinic_MetaF %>%
+  cat_plots <- lapply(cat_vars, function(var) {
+    df <- Clinic_MetaF_Here %>%
       filter(!is.na(.data[[var]]), .data[[var]] != "")
+    
+    title_text <- paste0(var, "\n(Sample Size = ", nrow(df), ")")
     
     ggplot(df, aes_string(x = var)) +
       geom_bar(fill = "#1f78b4", alpha = 0.7) +
       theme_bw(base_size = 12) +
       theme(
-        axis.text.x = element_text(size = 8, color = "black", angle = 20, hjust = 1),
+        axis.text.x = element_text(size = 7, color = "black", angle = 20, hjust = 1),
         axis.text.y = element_text(size = 8, color = "black"),
-        axis.title.x = element_text(size = 10, color = "black", face = "bold"),
-        axis.title.y = element_text(size = 10, color = "black", face = "bold"),
-        plot.title = element_blank()  # remove individual plot title
+        axis.title.y = element_text(size = 8, color = "black", face = "bold"),
+        plot.title = element_text(size = 8, face = "bold", hjust = 0.5) # top centered
       ) +
-      labs(x = var, y = "Count")
+      labs(title = title_text, x = "", y = "Count")
   })
   
   names(cat_plots) <- cat_vars
   
-  # --- 2. Numerical variable plots ---
-  num_plots <- lapply(num_vars, function(var){
-    df <- Clinic_MetaF %>%
+  # --- 2. Numerical variable plots (use counts on y-axis) ---
+  num_plots <- lapply(num_vars, function(var) {
+    df <- Clinic_MetaF_Here %>%
       filter(!is.na(.data[[var]]))
     
+    title_text <- paste0(var, "\n(Sample Size = ", nrow(df), ")")
+    
     ggplot(df, aes(x = .data[[var]])) +
-      geom_histogram(aes(y = ..density..), bins = 30, fill = "#33a02c", alpha = 0.6) +
-      geom_density(color = "red", linewidth = 1) +
+      geom_histogram(bins = bins, fill = "#33a02c", alpha = 0.6) +
       theme_bw(base_size = 12) +
       theme(
-        axis.text.x = element_text(size = 8, color = "black"),
+        axis.text.x = element_text(size = 7, color = "black"),
         axis.text.y = element_text(size = 8, color = "black"),
-        axis.title.x = element_text(size = 10, color = "black", face = "bold"),
-        axis.title.y = element_text(size = 10, color = "black", face = "bold"),
-        plot.title = element_blank()  # remove individual plot title
+        axis.title.y = element_text(size = 8, color = "black", face = "bold"),
+        plot.title = element_text(size = 8, face = "bold", hjust = 0.5) 
       ) +
-      labs(x = var, y = "Density")
+      labs(title = title_text, x = "", y = "Count")
   })
   
   names(num_plots) <- num_vars
@@ -290,8 +291,8 @@ ViewClinincalVar <- function(cat_vars, num_vars, Clinic_MetaF_Here){
   # --- 3. Combine all plots ---
   all_plots <- c(cat_plots, num_plots)
   
-  # Combine using patchwork (example: 3 columns)
-  combined_plot <- wrap_plots(all_plots, ncol = 4)
+  # Combine using patchwork (ncol can be set by user)
+  combined_plot <- wrap_plots(all_plots, ncol = ncol)
   
   return(combined_plot)
 }
