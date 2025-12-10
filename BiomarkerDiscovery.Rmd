@@ -43,7 +43,7 @@ We analyzed proteomic data from three different platforms:
 - Mass Spectrometry without bead depletion (NONdel, referred to as NONdel in this report).
 
 **2.Analytical Approaches:**  
-Two complementary approaches were used to explore potential protei biomarkers: 
+Two complementary approaches were used to explore potential protein biomarkers: 
 
 - Protein Differential Expression Analysis: Regression models with protein levels as the response variable.  
 - Association Testing: Regression models with protein levels as the predictor variable.  
@@ -51,7 +51,9 @@ Two complementary approaches were used to explore potential protei biomarkers:
 These approaches were chosen to capture different structural patterns in the proteomic data.
 
 **3. Analysis Scope:**  
-Both differential expression analysis and association testing were performed separately for each platform and each clinical trait. Statistical significance was defined as an adjusted p-value < 0.05, after correcting for multiple testing across all proteins evaluated.
+
+- Both differential expression analysis and association testing were performed separately for each platform and each clinical trait. 
+- Statistical significance was defined as an adjusted p-value < 0.05, after correcting for multiple testing across all proteins evaluated.
 
 **4. Clinical Variables:**  
 The clinical variables included in this report are:  
@@ -224,6 +226,7 @@ For each pathway database, gene set size between 10 and 1000 (inclusive) were in
 - Negative NES with significant padj indicates that the pathway is suppressed/downregulated.  
 - Leading edge proteins are the subset of proteins driving the significance of the corresponding pathways.
 - Blank indicates that no significantly enriched pathways were identified.
+- The first-level tabs correspond to clinical traits. Within each clinical trait tab, there are second-level tabs corresponding to the different pathway databases referenced to.
 
 # 6.1 - Pathway Enrichment Analysis Based on Association Testing, Using Proteins as Predictors{.tabset}
 ```{r pathway_plots_nested_tabs, results='asis', echo=FALSE, warning=FALSE, message=FALSE}

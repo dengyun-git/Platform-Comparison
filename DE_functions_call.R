@@ -393,27 +393,39 @@ generate_interactive_pathway_plot <- function(file_path, titleMessage) {
     )
   }
   
-  # ---- standardize leadingEdge, ensure always split correctly ----
+  # ---- standardize leadingEdge, split into multiple lines with max 8 proteins per line ----
+  max_per_line <- 8
   comSFDat$text <- sapply(comSFDat$leadingEdge, function(x) {
     
     # Handle NA or NULL
     if (is.null(x) || is.na(x)) return("")
     
-    # If it's a single string like "F10 COL4A2 TFPI"
+    # Convert to character vector
     if (is.character(x) && length(x) == 1) {
-      parts <- unlist(strsplit(x, "\\s+"))   # split on any whitespace
-      return(paste(parts, collapse = ", "))
+      vec <- unlist(strsplit(x, "\\s+"))
+    } else if (is.character(x)) {
+      vec <- x
+    } else {
+      return("")
     }
     
-    # If already a vector like c("F10","COL4A2","TFPI")
-    if (is.character(x) && length(x) > 1) {
-      return(paste(x, collapse = ", "))
-    }
+    # Split into lines with max_per_line per line
+    lines <- split(vec, ceiling(seq_along(vec) / max_per_line))
+    lines_text <- sapply(lines, function(l) paste(l, collapse = ", "))
     
-    return("")
-  }) 
+    # Join lines with <br> for hovertext
+    paste(lines_text, collapse = "<br>")
+  })
   
   # ---- Interactive plot ----
+  # Combine full hover text into one column
+  comSFDat$hover_text <- paste0(
+    "<b>Pathway:</b> ", comSFDat$pathway, "<br>",
+    "<b>Platform:</b> ", comSFDat$resource, "<br>",
+    "<b>Leading Edge Protein:</b><br>", comSFDat$text
+  )
+  
+  # Plotly interactive plot
   ply <- plot_ly(
     comSFDat,
     type = 'scatter',
@@ -429,12 +441,8 @@ generate_interactive_pathway_plot <- function(file_path, titleMessage) {
       reversescale = FALSE,
       colorbar = list(title = 'NES')
     ),
-    text = ~text,
-    hovertemplate = paste(
-      "<b>Pathway:</b> %{y}<br>",
-      "<b>Platform:</b> %{x}<br>",
-      "<b>Leading Edge Protein:</b> %{text}<extra></extra>"
-    )
+    text = ~hover_text,
+    hoverinfo = "text"  
   ) %>%
     layout(
       title = titleMessage,
@@ -516,61 +524,57 @@ make_volcano_panel <- function(trait, effect_list, pval_list) {
 }
 
 make_volcano_plotly <- function(df_eff, df_p, trait, platform, p_threshold = 0.05, effect_threshold = 0) {
-  
-  df <- data.frame(
-    Protein = rownames(df_eff),
-    Effect  = df_eff[[trait]],
-    Pvalue  = df_p[[trait]]
-  ) %>%
-    mutate(
-      logP = -log10(Pvalue),
-      Significance = case_when(
-        Pvalue < p_threshold & Effect > 0 ~ "Up",
-        Pvalue < p_threshold & Effect < 0 ~ "Down",
-        TRUE ~ "NS"
-      )
-    )
-  
-  plot_ly(
-    df,
-    x = ~Effect,
-    y = ~logP,
-    text = ~paste0(
-      "Protein: ", Protein,
-      "<br>Effect: ", round(Effect, 3),
-      "<br>Adjusted p-value: ", signif(Pvalue, 3),
-      "<br>Significance: ", Significance
-    ),
-    type = "scatter",
-    mode = "markers",
-    color = ~Significance,
-    colors = c("Up" = "firebrick", "Down" = "darkgreen", "NS" = "grey50"),
-    marker = list(size = 8, opacity = 0.7),
-    hovertemplate = "%{text}<extra></extra>"
-  ) %>%
-    layout(
-      title = list(
-        text = paste0("Interactive Volcano: ", trait, " (", platform, ")"),
-        font = list(size = 20, color = "black", family = "Arial", bold = TRUE),
-        x = 0.5,
-        y = 0.96
-      ),
-      xaxis = list(
-        title = list(text = "Effect Size (β)", font = list(size = 16, color = "black", family = "Arial", bold = TRUE)),
-        tickfont = list(size = 14, color = "black", family = "Arial", bold = TRUE)
-      ),
-      yaxis = list(
-        title = list(text = "-log10(Adjusted p-value)", font = list(size = 16, color = "black", family = "Arial", bold = TRUE)),
-        tickfont = list(size = 14, color = "black", family = "Arial", bold = TRUE)
-      ),
-      legend = list(
-        title = list(text = "Significance", font = list(size = 16, color = "black", family = "Arial", bold = TRUE)),
-        font = list(size = 14, color = "black", family = "Arial", bold = TRUE)
-      ),
-      showlegend = TRUE
-    )
-}
 
+df <- data.frame(
+  Protein = rownames(df_eff),
+  Effect  = df_eff[[trait]],
+  Pvalue  = df_p[[trait]]
+) %>%
+  mutate(
+    logP = -log10(Pvalue),
+    Significance = case_when(
+      Pvalue < p_threshold & Effect > 0 ~ "Up",
+      Pvalue < p_threshold & Effect < 0 ~ "Down",
+      TRUE ~ "NS"
+    )
+  )
+
+plot_ly(
+  df,
+  x = ~Effect,
+  y = ~logP,
+  text = ~paste0("Protein: ", Protein,
+                 "<br>Effect: ", round(Effect, 3),
+                 "<br>Adjusted p-value: ", signif(Pvalue, 3),
+                 "<br>Significance: ", Significance),
+  type = "scatter",
+  mode = "markers",
+  color = ~Significance,
+  colors = c("Up" = "firebrick", "Down" = "darkgreen", "NS" = "grey50"),
+  marker = list(size = 8, opacity = 0.7)
+) %>%
+  layout(
+    title = list(
+      text = paste0("Interactive Volcano: ", trait, " (", platform, ")"),
+      font = list(size = 20, color = "black", family = "Arial", bold = TRUE),
+      x = 0.5,
+      y = 0.96  # lower the title slightly
+    ),
+    xaxis = list(
+      title = list(text = "Effect Size (β)", font = list(size = 16, color = "black", family = "Arial", bold = TRUE)),
+      tickfont = list(size = 14, color = "black", family = "Arial", bold = TRUE)
+    ),
+    yaxis = list(
+      title = list(text = "-log10(Adjusted p-value)", font = list(size = 16, color = "black", family = "Arial", bold = TRUE)),
+      tickfont = list(size = 14, color = "black", family = "Arial", bold = TRUE)
+    ),
+    legend = list(
+      title = list(text = "Significance", font = list(size = 16, color = "black", family = "Arial", bold = TRUE)),
+      font = list(size = 14, color = "black", family = "Arial", bold = TRUE)
+    ),
+    showlegend = TRUE
+  )
+}
 
 #_____________________________________________________________________________________________________________________________________
 # Function to generate overlap (across platforms) summary table
@@ -635,7 +639,7 @@ GetOverlapTable<- function(varAll_List, SigProSummary){
   
   return(summary_df)
 }
-  
+
 #_____________________________________________________________________________________________________________________________________
 # Function to generate overlap (across platforms) summary table
 
