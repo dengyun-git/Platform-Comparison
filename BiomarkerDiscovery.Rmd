@@ -80,13 +80,66 @@ The clinical variables included in this report are:
 \]  
 where `p` and `β` are derived from the respective regression model.
 
-# 2 - The Major Conclusions
+# 2 - The Key Insights So Far
 
-<b><font face="Georgia" size="2em" color="firebrick"> Wait Avi to fill in. </font></b>
+## **2.1 Biomarker Candidate**
+
+<b><font face="Georgia" size="3em" color="firebrick"> Note: Section 7.1 (“Details for each biomarker candidate”) offers a convenient way to compare biomarkers identified across platforms.</font></b>
+
+- NONdel and Olink have more consistent conclusions about the biomarker candidates. 
+
+- CHI3L1: emerged as the only marker consistently detected across all platforms, supporting its well-established role in inflammation, tissue remodeling, and fibrotic processes. 
+
+- CA3, CD84, CFD, CHIT1, GAPDH, GPNMB, LGALS3BP, ORM1, PROS1, SERPINA3, SOD3: 11 proteins showed concordant results between the NONdel and Olink platforms. These proteins largely represent inflammatory mediators, acute-phase reactants, metabolic regulators, and extracellular enzymes.
+
+- ANGPTL4: uniquely consistent between the BEADdel and Olink platforms and is notable for its established involvement in lipid metabolism, hypoxia responses, and vascular regulation. 
+
+- ALNT15: uniquely consistent between BEADdel and NONdel, representing a a emerging relevance in secretory pathway regulation and adipogenesis.
+
+
+## **2.2 Pathway Enrichment Findings**
+
+<b><font face="Georgia" size="3em" color="firebrick"> Note: The following provides example analytical conclusions based on Section 6. Additional insights can be explored further within that section.</font></b>
+
+### **ALS vs Healthy Controls (ALSvsHC)**
+
+- **Olink:**  Strong enrichment of **neuronal pathways**, especially those related to **axonogenesis**, **neuronal differentiation**, and **neuroprotection**, suggesting that Olink preferentially detects neuronal structural changes relevant to ALS.
+
+- **BEADdel:**  Pathways are dominated by **innate immune activation**, **defense responses**, and **synapse/cell-junction organization**, as well as **glycan metabolic processes**, indicating a tendency toward capturing inflammatory and structural remodeling biology.
+
+- **NONdel:**  Shows broad enrichment across **neurodevelopment**, **axon guidance**, **cell morphogenesis**, and **immune and extracellular vesicle–related processes**, reflecting a mixture of neuronal, immune, and vesicle-mediated biology.
+
+### **Bulbar vs Spinal Presentation**
+
+- Only **Olink** shows enriched pathways for this comparison. Implicated biology points to **immune and secretory vesicle–related processes**, but replication across platforms is not observed.
+
+### **C9 vs Non-C9 Genotype**
+
+- **BEADdel and NONdel** overlap in **ECM and structural pathways**, suggesting genotype-specific ECM remodeling. 
+
+- **Olink** instead highlights **protein degradation**, aligning with established C9orf72 biology.  
+
+### **ALS Fine Motor Scores**
+
+- **Olink and NONdel** show strong convergence on **neuronal and synaptic pathways**. 
+
+- **NONdel and BEADdel** share enrichment in **immune pathways**, though signals are weaker in BEADdel.  
+
+### **ECAS Score (Cognition)**
+
+- **NONdel:**  
+  Enrichment in **negative regulation of intracellular signaling**, suggesting roles for intracellular pathway modulation in cognitive function.
+
+- **BEADdel:**  
+  Enrichment at the **cytoplasmic side of the plasma membrane**, potentially implicating membrane-associated signaling or receptor complexes.
+
+- **Olink:**  
+  Enriched for pathways involving the **endoplasmic reticulum lumen**, **extracellular matrix**, **encapsulating structures**, **cell body**, and **vesicle lumen**, indicating involvement of **secretory pathways, ECM organization, and vesicle trafficking**.
+
 
 # 3 - Overlap for Samples and Proteins{.tabset}
 
-<b><font face="Georgia" size="2em" color="firebrick"> Note: The overlapping are based on MS and Olink data sets after quality control and only the baseline samples are included in the analysis for this report.</font></b>
+<b><font face="Georgia" size="3em" color="firebrick"> Note: The overlapping are based on MS and Olink data sets after quality control and only the baseline samples are included in the analysis for this report.</font></b>
 
 ```{r, Load Data, echo=FALSE, warning=FALSE, message=FALSE, results=F}
 library(kableExtra)
